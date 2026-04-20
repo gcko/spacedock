@@ -9,7 +9,7 @@ verdict:
 score: 0.55
 worktree: .worktrees/spacedock-ensign-test-checklist-e2e-runtime-text-assertion-fix
 issue:
-pr:
+pr: #142
 mod-block:
 ---
 
