@@ -10,7 +10,7 @@ score: 0.65
 worktree: .worktrees/spacedock-ensign-test-dispatch-completion-signal-cycle7-port
 issue:
 pr:
-mod-block:
+mod-block: merge:pr-merge
 ---
 
 # Port test_dispatch_completion_signal to Cycle-7 Pattern Implementation Plan
