@@ -1,7 +1,7 @@
 ---
 id: 187
 title: "Refine and land PR #118 — entity-as-folder support (Karen Hsieh)"
-status: validation
+status: implementation
 source: "external contribution from Karen Hsieh (@ijac13) — PR #118 closes GitHub issue #99 with entity-as-folder scanner support. Spacedock-workflow entity filed to track refinement + review through our standards while preserving contributor attribution on merge."
 started: 2026-04-18T00:54:30Z
 completed:
@@ -12,6 +12,12 @@ issue: "#99"
 pr: "#118"
 mod-block:
 ---
+
+### Feedback Cycles
+
+**Cycle 1 — validation REJECTED 2026-04-20T19:19Z.** Validator PASSED on circumstantial evidence (grep + git history + codex-live green + offline suite), but implementation never ran the 3 failing live tests locally to confirm the "ambient flake" classification. Captain flagged the gap: `grep` proves those tests don't read folder-entity code paths, but doesn't prove their current failure mode is *flake*. Without a local run, we cannot distinguish "flake" from "stable failure unrelated to Karen's change."
+
+Routed to implementation to produce local-run evidence for each of the 3 failing tests before the flake verdict stands. See fresh ensign dispatch below.
 
 ## Contributor
 
