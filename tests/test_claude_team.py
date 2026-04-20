@@ -195,6 +195,13 @@ class TestModelMapping:
         ("claude-haiku-4-5-20251001", 200000),
         ("unknown-model-xyz", 200000),
         ("unknown-model-xyz[1m]", 1000000),  # heuristic works on unknown models too
+        ("claude-opus-4-7", 1000000),  # empirically verified 1M-native, no bracket needed
+        ("claude-opus-4-7[1m]", 1000000),
+        # Future models default to 200k until empirically verified. Locks in the
+        # no-speculation discipline: when a new opus ships, someone re-runs the
+        # check and adds the exact string to NATIVE_1M_MODELS.
+        ("claude-opus-4-8", 200000),
+        ("claude-opus-4-8[1m]", 1000000),  # bracket opt-in still works for any future model
     ])
     def test_model_context_limits(self, tmp_path, model, expected_limit):
         usage = {
@@ -497,6 +504,25 @@ class TestRuntimeModelDetection:
         assert data["model"] == "opus[1m]"
         assert data["context_limit"] == 1000000
         assert "config_fallback_warning" in data
+
+    def test_opus_4_7_bare_runtime_gets_1m(self, tmp_path):
+        """Runtime reports bare claude-opus-4-7 → native-1M family, 1M limit, no drift warning."""
+        usage = {
+            "input_tokens": 285000,
+            "cache_creation_input_tokens": 0,
+            "cache_read_input_tokens": 0,
+        }
+        make_jsonl_fixture(tmp_path, "spacedock-ensign-foo-impl", usage, model="claude-opus-4-7")
+        make_team_config(tmp_path, "test-team", "spacedock-ensign-foo-impl", "opus[1m]")
+
+        result = run_context_budget(tmp_path, "spacedock-ensign-foo-impl")
+        assert result.returncode == 0, f"stderr: {result.stderr}"
+        data = json.loads(result.stdout)
+        assert data["model"] == "claude-opus-4-7"
+        assert data["context_limit"] == 1000000
+        assert data["usage_pct"] == pytest.approx(28.5)
+        assert data["reuse_ok"] is True
+        assert "config_drift_warning" not in data
 
 
 # --- Build subcommand tests ---
