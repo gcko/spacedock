@@ -10,7 +10,7 @@ score: 0.70
 worktree: .worktrees/spacedock-ensign-test-reuse-dispatch-cycle7-port
 issue:
 pr:
-mod-block: merge:pr-merge
+mod-block: 
 ---
 
 # Port test_reuse_dispatch to Cycle-7 Pattern Implementation Plan
