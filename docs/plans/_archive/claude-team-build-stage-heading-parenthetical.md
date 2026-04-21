@@ -11,6 +11,7 @@ worktree:
 issue: "#138"
 pr: #145
 mod-block: 
+archived: 2026-04-21T04:05:49Z
 ---
 
 # Fix `claude-team build` stage-heading parser to tolerate trailing parentheticals
