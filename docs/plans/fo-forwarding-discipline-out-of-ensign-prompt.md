@@ -38,6 +38,14 @@ Ideation selects one.
 - **AC-3:** Existing FO behavior unchanged — `SendMessage(to="team-lead", ...)` literal continues to reach ensigns as a tool-call directive, not English narration. Verified by smoke-dispatching a throwaway ensign and inspecting its jsonl for the literal `SendMessage` tool call (same check as #204's AC-2).
 - **AC-4:** `make test-static` green post-merge.
 
+## Related observation — self-referential checklist items (captured 2026-04-20 #2 debrief)
+
+Adjacent to this task's principle (discipline belongs where its consumer reads it), another FO-generated-content pattern surfaced during #211: FO-built dispatch checklists can contain meta-instructions about report-writing itself. Example from #211's implementation checklist: item 3 read `"Record evidence in entity body and append Stage Report: work section with DONE/SKIPPED/FAILED accounting"` — a meta-instruction describing HOW to write the report, not WHAT work to do. The ensign satisfies the spirit (writes the report, accounts for items 1 and 2 via DONE bullets) but can't cleanly emit a separate `- DONE: Record evidence...` bullet without self-reference, which is what the Stage Report it's generating already embodies.
+
+This is a distinct failure mode from the forwarding-discipline fineprint (which is misplaced at the wrong *audience*). Self-referential checklist items are misplaced at the wrong *semantic layer* — the checklist should enumerate WORK items; protocol-compliance items belong to shared-core's Stage Report Protocol, not the per-dispatch checklist. Ideation on this entity may want to consider whether the FO's checklist-generation path also needs a filter to exclude meta-instructions about the report-writing convention, parallel to the fineprint relocation.
+
+Captured as a note rather than a new entity because the root cause is the same (FO-generated content embedding instructions meant for a different consumer). If ideation decides these are separable concerns, split off at that point.
+
 ## Out of scope
 
 - Broader refactor of `claude-team build`'s prompt-assembly layering. This task is the narrow relocation only.
