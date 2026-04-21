@@ -1,13 +1,13 @@
 ---
 id: 187
 title: "Refine and land PR #118 — entity-as-folder support (Karen Hsieh)"
-status: validation
+status: done
 source: "external contribution from Karen Hsieh (@ijac13) — PR #118 closes GitHub issue #99 with entity-as-folder scanner support. Spacedock-workflow entity filed to track refinement + review through our standards while preserving contributor attribution on merge."
 started: 2026-04-18T00:54:30Z
-completed:
-verdict:
+completed: 2026-04-21T03:22:05Z
+verdict: PASSED
 score: 0.6
-worktree: .worktrees/spacedock-ensign-refine-entity-as-folder-pr118
+worktree: 
 issue: "#99"
 pr: "#118"
 mod-block:
