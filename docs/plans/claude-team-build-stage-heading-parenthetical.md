@@ -10,7 +10,7 @@ score: 0.55
 worktree: .worktrees/spacedock-ensign-claude-team-build-stage-heading-parenthetical
 issue: "#138"
 pr: #145
-mod-block: merge:pr-merge
+mod-block: 
 ---
 
 # Fix `claude-team build` stage-heading parser to tolerate trailing parentheticals
