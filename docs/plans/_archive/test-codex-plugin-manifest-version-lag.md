@@ -11,6 +11,7 @@ worktree:
 issue:
 pr:
 mod-block:
+archived: 2026-04-21T04:14:22Z
 ---
 
 # `test_codex_plugin_manifest_matches_approved_contract` lags behind version bumps
