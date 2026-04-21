@@ -112,7 +112,18 @@ if [ -d "$SELF_MODS_DIR" ]; then
     done
 fi
 
-git add "$AUTHORITATIVE_PLUGIN_JSON" "$AUTHORITATIVE_MARKETPLACE_JSON" "$LEGACY_PLUGIN_JSON" "$LEGACY_MARKETPLACE_JSON" mods/*.md
+PACKAGING_TEST="tests/test_codex_plugin_packaging.py"
+python3 -c "
+import re, pathlib
+p = pathlib.Path('$PACKAGING_TEST')
+text = p.read_text()
+new_text, n = re.subn(r'(assert manifest\[\"version\"\] == \")[^\"]+(\")', r'\g<1>$VERSION\g<2>', text)
+if n != 1:
+    raise SystemExit(f'expected exactly 1 version assertion in $PACKAGING_TEST, found {n}')
+p.write_text(new_text)
+"
+
+git add "$AUTHORITATIVE_PLUGIN_JSON" "$AUTHORITATIVE_MARKETPLACE_JSON" "$LEGACY_PLUGIN_JSON" "$LEGACY_MARKETPLACE_JSON" mods/*.md "$PACKAGING_TEST"
 if [ -d "$SELF_MODS_DIR" ]; then
     git add "$SELF_MODS_DIR"
 fi
