@@ -1,7 +1,7 @@
 ---
 id: "212"
 title: "claude-team build rejects stage headings with trailing parentheticals"
-status: implementation
+status: validation
 source: "GitHub issue #138 (filed by CL) — external workflow in CL's env with two-stage `new` → `triaged` (terminal) pipeline; helper rejects the terminal heading and forces break-glass dispatch for ~60 entities"
 started: 2026-04-21T03:16:05Z
 completed:
