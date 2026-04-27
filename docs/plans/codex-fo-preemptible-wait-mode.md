@@ -10,7 +10,7 @@ score: 0.72
 worktree: .worktrees/spacedock-ensign-codex-fo-preemptible-wait-mode
 issue: "#148"
 pr: #149
-mod-block: merge:pr-merge
+mod-block: 
 ---
 
 ## Problem Statement
