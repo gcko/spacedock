@@ -284,6 +284,90 @@ def test_codex_log_parser_returns_only_agent_message_texts(tmp_path):
     ]
 
 
+def test_codex_log_parser_detects_preempted_multi_handle_wait_resume(tmp_path):
+    log_path = tmp_path / "codex-log.jsonl"
+    entries = [
+        {
+            "type": "item.completed",
+            "item": {
+                "id": "msg_1",
+                "type": "agent_message",
+                "text": "Waiting on the blocked implementation wait set before advancing.",
+            },
+        },
+        {
+            "type": "item.completed",
+            "item": {
+                "id": "wait_1",
+                "type": "collab_tool_call",
+                "tool": "wait",
+                "receiver_thread_ids": ["item_23", "item_42"],
+            },
+        },
+        {
+            "type": "item.completed",
+            "item": {
+                "id": "user_1",
+                "type": "user_message",
+                "text": "Before that finishes, can you clarify the gate wording?",
+            },
+        },
+        {
+            "type": "item.completed",
+            "item": {
+                "id": "msg_2",
+                "type": "agent_message",
+                "text": "wait outcome: preempted_by_user_input; answering, then resuming the same wait set.",
+            },
+        },
+        {
+            "type": "item.completed",
+            "item": {
+                "id": "notification_1",
+                "type": "agent_message",
+                "text": "Completion notification observed for item_23; still unresolved until resumed wait_agent collects it.",
+            },
+        },
+        {
+            "type": "item.completed",
+            "item": {
+                "id": "wait_2",
+                "type": "collab_tool_call",
+                "tool": "wait",
+                "receiver_thread_ids": ["item_23", "item_42"],
+                "agents_states": {
+                    "item_23": {
+                        "status": "completed",
+                        "message": "Stage report committed at abc1234.",
+                    },
+                    "item_42": {
+                        "status": "completed",
+                        "message": "Stage report committed at def5678.",
+                    },
+                },
+            },
+        },
+    ]
+    log_path.write_text("\n".join(json.dumps(entry) for entry in entries))
+
+    parser = CodexLogParser(log_path)
+    sequence = parser.interrupted_wait_sequences()[0]
+
+    assert sequence["initial_receiver_thread_ids"] == ["item_23", "item_42"]
+    assert sequence["initial_unresolved_thread_ids"] == ["item_23", "item_42"]
+    assert sequence["resumed_receiver_thread_ids"] == ["item_23", "item_42"]
+    assert sequence["preemption_outcome"] == "preempted_by_user_input"
+    assert sequence["user_interruption_texts"] == [
+        "Before that finishes, can you clarify the gate wording?"
+    ]
+    assert sequence["completion_notifications_before_resume"] == ["item_23"]
+    assert sequence["collected_completed_thread_ids"] == ["item_23", "item_42"]
+    assert sequence["resolved_thread_ids"] == ["item_23", "item_42"]
+    assert sequence["still_unresolved_thread_ids"] == []
+    assert sequence["dropped_thread_ids"] == []
+    assert sequence["replacement_thread_ids"] == []
+
+
 def test_isolated_claude_env_injects_oauth_token_when_token_file_present(monkeypatch, tmp_path):
     fake_home = tmp_path / "real-home"
     claude_dir = fake_home / ".claude"

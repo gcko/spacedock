@@ -183,9 +183,24 @@ def build_codex_first_officer_invocation_prompt(
     workflow_dir: str | Path,
     agent_id: str = "spacedock:first-officer",
     run_goal: str | None = None,
+    local_skill_path: str | Path | None = None,
+    local_plugin_root: str | Path | None = None,
 ) -> str:
     workflow_dir = Path(workflow_dir)
-    prompt = f"Use the `{agent_id}` skill to manage the Codex workflow at `{workflow_dir}`."
+    if local_skill_path is not None:
+        prompt = (
+            f"Use the local `{agent_id}` skill at `{Path(local_skill_path)}` "
+            f"to manage the Codex workflow at `{workflow_dir}`."
+        )
+    else:
+        prompt = f"Use the `{agent_id}` skill to manage the Codex workflow at `{workflow_dir}`."
+    if local_plugin_root is not None:
+        plugin_root = Path(local_plugin_root)
+        prompt = (
+            f"{prompt}\n\n"
+            f"The local Spacedock plugin directory is `{plugin_root}`; the status helper is "
+            f"`{plugin_root / 'skills' / 'commission' / 'bin' / 'status'}`."
+        )
     if run_goal:
         prompt = f"{prompt}\n\n{run_goal.strip()}"
     return prompt
@@ -919,10 +934,17 @@ def run_codex_first_officer(
     """Run the Codex first-officer skill via codex exec. Returns exit code."""
     log_path = runner.log_dir / log_name
     workflow_path = (runner.test_project_dir / workflow_dir).resolve()
-    prompt = build_codex_first_officer_invocation_prompt(workflow_path, agent_id=agent_id, run_goal=run_goal)
+    skill_home = prepare_codex_skill_home(runner.test_dir, runner.repo_root)
+    local_skill_path = runner.repo_root / "skills" / "first-officer" / "SKILL.md"
+    prompt = build_codex_first_officer_invocation_prompt(
+        workflow_path,
+        agent_id=agent_id,
+        run_goal=run_goal,
+        local_skill_path=local_skill_path,
+        local_plugin_root=runner.repo_root,
+    )
     (runner.log_dir / "codex-fo-invocation.txt").write_text(prompt + "\n")
 
-    skill_home = prepare_codex_skill_home(runner.test_dir, runner.repo_root)
     env = os.environ.copy()
     env["HOME"] = str(skill_home)
     env["CODEX_HOME"] = str(skill_home / ".codex")
@@ -1836,6 +1858,116 @@ class CodexLogParser:
                 if state.get("status") == "completed" and state.get("message"):
                     messages.append(str(state["message"]))
         return messages
+
+    def interrupted_wait_sequences(self) -> list[dict]:
+        """Return wait/interruption/resume sequences from Codex JSONL fixtures.
+
+        This helper intentionally models Codex completion notifications as
+        side-channel evidence: a sequence is only considered collected when a
+        later wait call returns completed agent states for the resumed handles.
+        """
+        sequences: list[dict] = []
+        pending: dict | None = None
+
+        for entry in self.json_entries:
+            item = entry.get("item", {})
+            if not isinstance(item, dict):
+                continue
+
+            item_type = item.get("type")
+            if item_type == "collab_tool_call" and item.get("tool") in {"wait", "wait_agent"}:
+                handles = self._receiver_thread_ids(item)
+                if not handles:
+                    continue
+                if pending and pending.get("preemption_outcome") == "preempted_by_user_input":
+                    completed = self._completed_thread_ids(item, handles)
+                    initial = pending["initial_receiver_thread_ids"]
+                    initial_unresolved = pending["initial_unresolved_thread_ids"]
+                    pending["resumed_receiver_thread_ids"] = handles
+                    pending["collected_completed_thread_ids"] = completed
+                    pending["resolved_thread_ids"] = [
+                        handle for handle in initial_unresolved if handle in completed
+                    ]
+                    pending["still_unresolved_thread_ids"] = [
+                        handle for handle in initial_unresolved if handle not in completed
+                    ]
+                    pending["dropped_thread_ids"] = [
+                        handle for handle in initial if handle not in handles
+                    ]
+                    pending["replacement_thread_ids"] = [
+                        handle for handle in handles if handle not in initial
+                    ]
+                    sequences.append(pending)
+                    pending = None
+                    continue
+
+                pending = {
+                    "initial_receiver_thread_ids": handles,
+                    "initial_unresolved_thread_ids": list(handles),
+                    "preemption_outcome": None,
+                    "user_interruption_texts": [],
+                    "completion_notifications_before_resume": [],
+                    "resumed_receiver_thread_ids": [],
+                    "collected_completed_thread_ids": [],
+                    "resolved_thread_ids": [],
+                    "still_unresolved_thread_ids": [],
+                    "dropped_thread_ids": [],
+                    "replacement_thread_ids": [],
+                }
+                continue
+
+            text = item.get("text")
+            if not pending or not isinstance(text, str):
+                continue
+
+            if item_type == "user_message":
+                pending["user_interruption_texts"].append(text)
+            elif item_type == "agent_message":
+                if "preempted_by_user_input" in text:
+                    pending["preemption_outcome"] = "preempted_by_user_input"
+                if (
+                    pending.get("preemption_outcome") == "preempted_by_user_input"
+                    and "completion notification" in text.lower()
+                ):
+                    pending["completion_notifications_before_resume"].extend(
+                        self._thread_ids_from_text(text)
+                    )
+
+        return sequences
+
+    @staticmethod
+    def _receiver_thread_ids(item: dict) -> list[str]:
+        raw_handles = item.get("receiver_thread_ids", [])
+        if not isinstance(raw_handles, list):
+            return []
+        return [str(handle) for handle in raw_handles]
+
+    @staticmethod
+    def _completed_thread_ids(item: dict, handle_order: list[str]) -> list[str]:
+        states = item.get("agents_states", {})
+        if not isinstance(states, dict):
+            return []
+
+        completed: list[str] = []
+        for handle in handle_order:
+            state = states.get(handle)
+            if isinstance(state, dict) and state.get("status") == "completed":
+                completed.append(handle)
+        for handle, state in states.items():
+            handle_text = str(handle)
+            if handle_text in completed:
+                continue
+            if isinstance(state, dict) and state.get("status") == "completed":
+                completed.append(handle_text)
+        return completed
+
+    @staticmethod
+    def _thread_ids_from_text(text: str) -> list[str]:
+        ids: list[str] = []
+        for match in re.findall(r"\b(?:item|thread)[_-][A-Za-z0-9-]+\b", text):
+            if match not in ids:
+                ids.append(match)
+        return ids
 
     def write_text(self, output_path: Path | str):
         with open(output_path, "w") as f:
