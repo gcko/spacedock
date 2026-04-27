@@ -1,13 +1,13 @@
 ---
 id: 218
 title: "Pi runtime compatibility baseline"
-status: ideation
+status: implementation
 source: "github#147"
 started: 2026-04-27T22:48:56Z
 completed:
 verdict:
 score:
-worktree:
+worktree: .worktrees/spacedock-ensign-pi-runtime-compatibility-baseline
 issue: "#147"
 pr:
 ---
