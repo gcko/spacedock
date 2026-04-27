@@ -74,9 +74,12 @@ A task moves to ideation when a pilot starts fleshing out the idea: clarify the 
   - Acceptance criteria must include how each criterion will be tested
   - Acceptance criteria are **entity-level** — they describe properties of the finished task (end-state facts a future reader can verify), not stage actions. Items that describe stage work ("run X 3 times", "produce analysis Y") belong in the stage report's checklist, not in the AC list. If an AC item reads as an imperative verb phrase ("Run …", "Produce …", "Capture …"), rewrite it as the end-state property it produces ("Test X passes reliably", "Analysis Y concludes with cited evidence", "File Z contains string W").
   - Test plan: what tests verify the implementation, estimated cost/complexity, whether E2E tests are needed
+  - Plans should describe intended behavior at the level a future worker or validator needs to reason about it. Prefer observable behavior over implementation internals unless the task is specifically about that internal representation.
+  - Choose proof at the same abstraction level as the claim: static checks for durable doc/contract structure, parser or transcript fixtures for orchestration behavior, and live E2E only when real runtime behavior is the claim.
+  - When captain feedback changes the target behavior, update the task body, acceptance criteria, and test plan together before re-validating.
   - For template changes: specific before/after wording, not just "change X"
-- **Good:** Clearly scoped, actionable, addresses a real need, considers edge cases, test plan proportional to risk (static checks for simple wording, E2E for behavioral guarantees)
-- **Bad:** Vague hand-waving, scope creep, solving problems that don't exist yet, no clear definition of done, acceptance criteria without a test plan
+- **Good:** Clearly scoped, behavior-first, actionable, addresses a real need, considers edge cases, avoids unnecessary runtime-internal modeling, and uses tests that prove the intended behavior directly
+- **Bad:** Vague hand-waving, scope creep, solving problems that don't exist yet, no clear definition of done, acceptance criteria without a test plan, static prose tests for behavioral requirements, or tests that pass while missing the current intended behavior
 - **Staff review:** When the FO assesses ideation as complex (touches scaffolding, requires E2E tests, or score >= 0.8), it spawns a fresh independent reviewer subagent before presenting at the ideation gate. The reviewer checks design soundness, test plan sufficiency, and gaps. The captain sees both the ideation and the reviewer's assessment.
 
 ### `implementation`
@@ -99,9 +102,11 @@ A task moves to validation after implementation is complete. The work here is to
     - Prefer the stable repo-level entrypoints when they fit the task: `make test-static` for the offline suite, `make test-live-claude` / `make test-live-codex` for tier-aware live runs, and `make test-e2e TEST=... RUNTIME=...` for single-file runtime-specific E2E checks
   - Verify each acceptance criterion with evidence
   - Pull every `**AC-N**` item from the entity body's `## Acceptance criteria` section; reproduce the evidence cited in each "Verified by" clause; flag any AC without evidence. Validation's job is cross-check, not re-derive.
+  - Check that the task body, acceptance criteria, implementation, and tests reflect the latest captain feedback.
+  - Reject when tests pass but prove an obsolete, over-specified, or wrong target behavior.
   - A PASSED/REJECTED recommendation
-- **Good:** Thorough testing against acceptance criteria, clear evidence of pass/fail, honest assessment
-- **Bad:** Rubber-stamping without actually testing, ignoring failing edge cases, validating against wrong criteria
+- **Good:** Thorough testing against acceptance criteria, clear evidence of pass/fail, honest assessment, and validation that the tests prove the current intended behavior
+- **Bad:** Rubber-stamping without actually testing, ignoring failing edge cases, validating against wrong criteria, or accepting passing tests that encode stale prose, obsolete assumptions, or the wrong abstraction level
 - **Spot-check principle:** Before committing to an expensive multi-run experiment or long test suite, do a cheap single-run spot-check (ideally on a smaller/cheaper model) to verify the infrastructure works end-to-end. Fix broken plumbing before burning budget on real runs.
 
 ### `done`
