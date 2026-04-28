@@ -1,7 +1,7 @@
 ---
 id: 200
 title: "Haiku-bare FO behavioral weaknesses on guardrail suite (test_gate_guardrail + test_feedback_keepalive)"
-status: implementation
+status: validation
 source: "session 2026-04-18 investigation of PR #132 (#190) bare-mode CI failures — two distinct haiku-bare-FO weakness patterns surfaced after #186 cycle-6 fixed test_gate_guardrail's model-fixture plumbing and #190's two-path observer sharpened test_feedback_keepalive's diagnostic. Neither failure is a regression from #186 or #190; both are pre-existing haiku-bare-FO weaknesses newly made visible by better fixtures."
 started: 2026-04-28T15:02:39Z
 completed:
