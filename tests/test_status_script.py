@@ -1,6 +1,7 @@
 # ABOUTME: Tests for the Python status script's parsing and dispatch logic.
 # ABOUTME: Covers frontmatter parsing, stage ordering, --next eligibility rules, and output format.
 
+import hashlib
 import os
 import subprocess
 import tempfile
@@ -88,6 +89,58 @@ README_NO_STAGES = textwrap.dedent("""\
 
     # Test Pipeline
     """)
+
+
+def readme_with_id_style(style):
+    """Return the standard staged README with an explicit id-style."""
+    return README_WITH_STAGES.replace(
+        "entity-label: task\n",
+        f"entity-label: task\nid-style: {style}\n",
+        1,
+    )
+
+
+SD_B32_ALPHABET = '0123456789abcdefghjkmnpqrstvwxyz'
+
+
+def sd_b32_id(prefix, fill='0'):
+    """Build a 24-char lowercase SD-B32 test ID."""
+    return (prefix + (fill * 24))[:24]
+
+
+def encode_sd_b32_digest(digest, length=24):
+    """Encode digest bytes into the Spacedock Base32 alphabet."""
+    value = int.from_bytes(digest, 'big')
+    total_bits = len(digest) * 8
+    chars = []
+    for offset in range(total_bits - 5, -1, -5):
+        chars.append(SD_B32_ALPHABET[(value >> offset) & 31])
+        if len(chars) == length:
+            break
+    return ''.join(chars)
+
+
+def sd_b32_expected_id(workflow_dir, *, seed='manual', actor='', timestamp='', nonce=0, context=''):
+    material = '\n'.join([
+        'spacedock-sd-b32-v1',
+        f'workflow={os.path.realpath(workflow_dir)}',
+        f'context={context}',
+        f'seed={seed}',
+        f'actor={actor}',
+        f'timestamp={timestamp}',
+        f'nonce={nonce}',
+    ])
+    return encode_sd_b32_digest(hashlib.sha256(material.encode('utf-8')).digest())
+
+
+def shortest_unique_prefix(value, values, min_prefix=2):
+    length = min_prefix
+    while length < len(value):
+        prefix = value[:length]
+        if sum(1 for other in values if other.startswith(prefix)) == 1:
+            break
+        length += 1
+    return value[:length]
 
 
 def entity(id, title, status, score='', source='', worktree='', pr=''):
@@ -437,6 +490,552 @@ class TestNextIdOption(unittest.TestCase):
             result = run_status(tmpdir, '--next-id', script_path=self.script_path)
             self.assertEqual(result.returncode, 0, result.stderr)
             self.assertEqual(result.stdout, '010\n')
+
+
+class TestIdStyleStrategies(unittest.TestCase):
+    """Test pluggable id-style behavior for sequential, slug, and sd-b32."""
+
+    def setUp(self):
+        self._script_dir = tempfile.mkdtemp()
+        self.script_path = build_status_script(self._script_dir)
+
+    def tearDown(self):
+        os.unlink(self.script_path)
+        os.rmdir(self._script_dir)
+
+    def test_slug_style_uses_slug_as_effective_id_and_next_id_is_not_applicable(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            make_pipeline(tmpdir, readme_with_id_style('slug'), {
+                'named-project.md': textwrap.dedent("""\
+                    ---
+                    title: Named Project
+                    status: backlog
+                    source:
+                    score: 0.50
+                    worktree:
+                    ---
+
+                    Description.
+                    """),
+            })
+
+            result = run_status(tmpdir, script_path=self.script_path)
+            self.assertEqual(result.returncode, 0, result.stderr)
+            row = result.stdout.strip().split('\n')[2]
+            self.assertTrue(row.startswith('named-project'), row)
+            self.assertIn('named-project', row)
+
+            next_result = run_status(tmpdir, '--next-id', script_path=self.script_path)
+            self.assertNotEqual(next_result.returncode, 0)
+            self.assertIn('not applicable for id-style: slug', next_result.stderr)
+
+            boot = run_status(tmpdir, '--boot', script_path=self.script_path)
+            self.assertEqual(boot.returncode, 0, boot.stderr)
+            self.assertIn('ID_STYLE: slug', boot.stdout)
+            self.assertIn('NEXT_ID: n/a (id-style: slug)', boot.stdout)
+
+    def test_sd_b32_next_id_uses_sha_seed_material_and_retries_collision(self):
+        timestamp = '2026-04-28T01:02:03.123456Z'
+        context = 'unit-test-workflow-context'
+        with tempfile.TemporaryDirectory() as tmpdir:
+            existing = sd_b32_expected_id(
+                tmpdir,
+                seed='Active Task',
+                actor='ensign',
+                timestamp=timestamp,
+                nonce=0,
+                context=context,
+            )
+            fresh = sd_b32_expected_id(
+                tmpdir,
+                seed='Active Task',
+                actor='ensign',
+                timestamp=timestamp,
+                nonce=1,
+                context=context,
+            )
+            make_pipeline(
+                tmpdir,
+                readme_with_id_style('sd-b32'),
+                entities={'active.md': entity(existing, 'Active', 'backlog')},
+            )
+            result = run_status(
+                tmpdir,
+                '--next-id',
+                '--id-seed',
+                'Active Task',
+                '--id-actor',
+                'ensign',
+                script_path=self.script_path,
+                extra_env={
+                    'SPACEDOCK_TEST_SD_B32_TIMESTAMP': timestamp,
+                    'SPACEDOCK_ID_CONTEXT': context,
+                },
+            )
+            self.assertEqual(result.returncode, 0, result.stderr)
+            self.assertEqual(result.stdout, fresh + '\n')
+
+    def test_sd_b32_next_id_without_seed_uses_sha_fallback_material(self):
+        timestamp = '2026-04-28T04:05:06.654321Z'
+        context = 'manual-operator-context'
+        with tempfile.TemporaryDirectory() as tmpdir:
+            expected = sd_b32_expected_id(
+                tmpdir,
+                seed='manual',
+                actor='operator',
+                timestamp=timestamp,
+                nonce=0,
+                context=context,
+            )
+            make_pipeline(tmpdir, readme_with_id_style('sd-b32'))
+            result = run_status(
+                tmpdir,
+                '--next-id',
+                '--id-actor',
+                'operator',
+                script_path=self.script_path,
+                extra_env={
+                    'SPACEDOCK_TEST_SD_B32_TIMESTAMP': timestamp,
+                    'SPACEDOCK_ID_CONTEXT': context,
+                },
+            )
+            self.assertEqual(result.returncode, 0, result.stderr)
+            self.assertEqual(result.stdout, expected + '\n')
+            self.assertRegex(result.stdout.strip(), r'^[0123456789abcdefghjkmnpqrstvwxyz]{24}$')
+
+    def test_sd_b32_display_prefixes_use_shortest_unique_prefix_across_active_and_archive(self):
+        active_id = sd_b32_id('ab0')
+        archived_id = sd_b32_id('ab1')
+        other_id = sd_b32_id('cd')
+        with tempfile.TemporaryDirectory() as tmpdir:
+            make_pipeline(
+                tmpdir,
+                readme_with_id_style('sd-b32'),
+                entities={
+                    'active-a.md': entity(active_id, 'Active A', 'backlog'),
+                    'other.md': entity(other_id, 'Other', 'backlog'),
+                },
+                archived={'archived-b.md': entity(archived_id, 'Archived B', 'done')},
+            )
+
+            result = run_status(tmpdir, script_path=self.script_path)
+            self.assertEqual(result.returncode, 0, result.stderr)
+            lines = result.stdout.strip().split('\n')
+            active_line = [line for line in lines if 'active-a' in line][0]
+            other_line = [line for line in lines if 'other' in line][0]
+            self.assertTrue(active_line.startswith('ab0'), active_line)
+            self.assertTrue(other_line.startswith('cd '), other_line)
+            self.assertNotIn(active_id, result.stdout)
+
+            archived = run_status(tmpdir, '--archived', script_path=self.script_path)
+            self.assertEqual(archived.returncode, 0, archived.stderr)
+            archived_line = [line for line in archived.stdout.split('\n') if 'archived-b' in line][0]
+            self.assertTrue(archived_line.startswith('ab1'), archived_line)
+
+            validation = run_status(tmpdir, '--validate', script_path=self.script_path)
+            self.assertEqual(validation.returncode, 0, validation.stderr)
+            self.assertEqual(validation.stdout, 'VALID\n')
+
+    def test_sd_b32_validate_rejects_duplicate_full_id_invalid_id_and_missing_id(self):
+        duplicate = sd_b32_id('aa')
+        with tempfile.TemporaryDirectory() as tmpdir:
+            make_pipeline(
+                tmpdir,
+                readme_with_id_style('sd-b32'),
+                entities={
+                    'dup-a.md': entity(duplicate, 'Duplicate A', 'backlog'),
+                    'dup-b.md': entity(duplicate, 'Duplicate B', 'backlog'),
+                    'invalid.md': entity('not-valid-sd-b32-id', 'Invalid', 'backlog'),
+                    'missing.md': textwrap.dedent("""\
+                        ---
+                        title: Missing ID
+                        status: backlog
+                        score:
+                        worktree:
+                        ---
+
+                        Description.
+                        """),
+                },
+            )
+            result = run_status(tmpdir, '--validate', script_path=self.script_path)
+            self.assertNotEqual(result.returncode, 0)
+            self.assertIn('duplicate sd-b32 stored id', result.stderr)
+            self.assertIn('invalid sd-b32 stored id', result.stderr)
+            self.assertIn('missing required id', result.stderr)
+            self.assertIn('dup-a', result.stderr)
+            self.assertIn('dup-b', result.stderr)
+            self.assertIn('path=', result.stderr)
+
+    def test_fail_fast_modes_do_not_print_normal_output_when_validation_fails(self):
+        duplicate = sd_b32_id('aa')
+        with tempfile.TemporaryDirectory() as tmpdir:
+            make_pipeline(
+                tmpdir,
+                readme_with_id_style('sd-b32'),
+                entities={
+                    'dup-a.md': entity(duplicate, 'Duplicate A', 'backlog'),
+                    'dup-b.md': entity(duplicate, 'Duplicate B', 'backlog'),
+                },
+            )
+            for args in [(), ('--archived',), ('--next',), ('--next-id',), ('--boot',)]:
+                with self.subTest(args=args):
+                    result = run_status(tmpdir, *args, script_path=self.script_path)
+                    self.assertNotEqual(result.returncode, 0)
+                    self.assertEqual(result.stdout, '')
+                    self.assertIn('duplicate sd-b32 stored id', result.stderr)
+
+    def test_boot_reports_strategy_dependent_next_id_and_min_prefix(self):
+        timestamp = '2026-04-28T07:08:09.111213Z'
+        context = 'boot-context'
+        with tempfile.TemporaryDirectory() as tmpdir:
+            fresh = sd_b32_expected_id(
+                tmpdir,
+                seed='manual',
+                actor='boot-actor',
+                timestamp=timestamp,
+                nonce=0,
+                context=context,
+            )
+            make_pipeline(tmpdir, readme_with_id_style('sd-b32'))
+            result = run_status(
+                tmpdir,
+                '--boot',
+                script_path=self.script_path,
+                extra_env={
+                    'SPACEDOCK_TEST_SD_B32_TIMESTAMP': timestamp,
+                    'SPACEDOCK_ID_ACTOR': 'boot-actor',
+                    'SPACEDOCK_ID_CONTEXT': context,
+                },
+            )
+            self.assertEqual(result.returncode, 0, result.stderr)
+            self.assertIn('ID_STYLE: sd-b32', result.stdout)
+            self.assertIn(f'NEXT_ID: {fresh}', result.stdout)
+            self.assertIn('MIN_PREFIX: 2', result.stdout)
+
+    def test_sequential_validation_rejects_duplicate_or_non_numeric_ids(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            make_pipeline(tmpdir, readme_with_id_style('sequential'), {
+                'one.md': entity('001', 'One', 'backlog'),
+                'dupe.md': entity('001', 'Dupe', 'backlog'),
+                'bad.md': entity('abc', 'Bad', 'backlog'),
+            })
+            result = run_status(tmpdir, '--validate', script_path=self.script_path)
+            self.assertNotEqual(result.returncode, 0)
+            self.assertIn('duplicate id', result.stderr)
+            self.assertIn('non-numeric sequential id', result.stderr)
+
+    def test_sequential_archived_duplicate_ids_do_not_block_normal_operations(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            make_pipeline(
+                tmpdir,
+                readme_with_id_style('sequential'),
+                entities={
+                    'target.md': entity('217', 'Target', 'backlog', '0.50'),
+                    'highest.md': entity('219', 'Highest', 'done', '0.10'),
+                },
+                archived={
+                    'old-a.md': entity('033', 'Old A', 'done'),
+                    'old-b.md': entity('033', 'Old B', 'done'),
+                    'old-c.md': entity('131', 'Old C', 'done'),
+                    'old-d.md': entity('131', 'Old D', 'done'),
+                },
+            )
+
+            where = run_status(tmpdir, '--where', 'id=217', script_path=self.script_path)
+            self.assertEqual(where.returncode, 0, where.stderr)
+            self.assertIn('target', where.stdout)
+            self.assertNotIn('duplicate id', where.stderr)
+
+            boot = run_status(tmpdir, '--boot', script_path=self.script_path)
+            self.assertEqual(boot.returncode, 0, boot.stderr)
+            self.assertIn('ID_STYLE: sequential', boot.stdout)
+            self.assertIn('NEXT_ID: 220', boot.stdout)
+
+            next_result = run_status(tmpdir, '--next', script_path=self.script_path)
+            self.assertEqual(next_result.returncode, 0, next_result.stderr)
+            self.assertIn('target', next_result.stdout)
+
+            next_id = run_status(tmpdir, '--next-id', script_path=self.script_path)
+            self.assertEqual(next_id.returncode, 0, next_id.stderr)
+            self.assertEqual(next_id.stdout, '220\n')
+
+            resolved = run_status(tmpdir, '--resolve', '217', script_path=self.script_path)
+            self.assertEqual(resolved.returncode, 0, resolved.stderr)
+            self.assertIn('slug=target', resolved.stdout)
+            self.assertIn('id=217', resolved.stdout)
+
+            validation = run_status(tmpdir, '--validate', script_path=self.script_path)
+            self.assertEqual(validation.returncode, 0, validation.stderr)
+            self.assertEqual(validation.stdout, 'VALID\n')
+
+
+class TestResolveOption(unittest.TestCase):
+    """Test status --resolve reference resolution."""
+
+    def setUp(self):
+        self._script_dir = tempfile.mkdtemp()
+        self.script_path = build_status_script(self._script_dir)
+
+    def tearDown(self):
+        os.unlink(self.script_path)
+        os.rmdir(self._script_dir)
+
+    def test_slug_precedence_and_forced_id_qualifier(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            make_pipeline(tmpdir, readme_with_id_style('sequential'), {
+                '001.md': entity('900', 'Slug Named Like ID', 'backlog'),
+                'target.md': entity('001', 'Target', 'backlog'),
+            })
+
+            bare = run_status(tmpdir, '--resolve', '001', script_path=self.script_path)
+            self.assertEqual(bare.returncode, 0, bare.stderr)
+            self.assertIn('slug=001', bare.stdout)
+            self.assertIn('id=900', bare.stdout)
+
+            forced = run_status(tmpdir, '--resolve', 'id:001', script_path=self.script_path)
+            self.assertEqual(forced.returncode, 0, forced.stderr)
+            self.assertIn('slug=target', forced.stdout)
+            self.assertIn('id=001', forced.stdout)
+
+    def test_sd_b32_prefix_resolution_rejects_too_short_and_ambiguous_prefixes(self):
+        first = sd_b32_id('ab0')
+        second = sd_b32_id('ab1')
+        with tempfile.TemporaryDirectory() as tmpdir:
+            make_pipeline(tmpdir, readme_with_id_style('sd-b32'), {
+                'first.md': entity(first, 'First', 'backlog'),
+                'second.md': entity(second, 'Second', 'backlog'),
+            })
+
+            short = run_status(tmpdir, '--resolve', 'a', script_path=self.script_path)
+            self.assertNotEqual(short.returncode, 0)
+            self.assertIn('minimum prefix length is 2', short.stderr)
+
+            ambiguous = run_status(tmpdir, '--resolve', 'ab', script_path=self.script_path)
+            self.assertNotEqual(ambiguous.returncode, 0)
+            self.assertIn('ambiguous', ambiguous.stderr)
+            self.assertIn('first', ambiguous.stderr)
+            self.assertIn('second', ambiguous.stderr)
+
+            unique = run_status(tmpdir, '--resolve', 'ab0', script_path=self.script_path)
+            self.assertEqual(unique.returncode, 0, unique.stderr)
+            self.assertIn('scope=active', unique.stdout)
+            self.assertIn('slug=first', unique.stdout)
+            self.assertIn(f'id={first}', unique.stdout)
+
+    def test_archived_resolution_requires_archived_or_scope_qualifier_when_ambiguous(self):
+        ident = sd_b32_id('cd')
+        archived_ident = sd_b32_id('ef')
+        with tempfile.TemporaryDirectory() as tmpdir:
+            make_pipeline(
+                tmpdir,
+                readme_with_id_style('sd-b32'),
+                entities={'shared.md': entity(ident, 'Active Shared', 'backlog')},
+                archived={'shared.md': entity(archived_ident, 'Archived Shared', 'done')},
+            )
+
+            bare = run_status(tmpdir, '--resolve', 'shared', '--archived',
+                              script_path=self.script_path)
+            self.assertNotEqual(bare.returncode, 0)
+            self.assertIn('ambiguous', bare.stderr)
+            self.assertIn('scope=active', bare.stderr)
+            self.assertIn('scope=archived', bare.stderr)
+
+            active = run_status(tmpdir, '--resolve', 'active:shared', '--archived',
+                                script_path=self.script_path)
+            self.assertEqual(active.returncode, 0, active.stderr)
+            self.assertIn('scope=active', active.stdout)
+
+            archived = run_status(tmpdir, '--resolve', 'archive:shared', '--archived',
+                                  script_path=self.script_path)
+            self.assertEqual(archived.returncode, 0, archived.stderr)
+            self.assertIn('scope=archived', archived.stdout)
+
+    def test_archived_resolution_rejects_active_slug_vs_archived_prefix_ambiguity(self):
+        active_id = sd_b32_id('cd')
+        archived_id = sd_b32_id('ab0')
+        with tempfile.TemporaryDirectory() as tmpdir:
+            make_pipeline(
+                tmpdir,
+                readme_with_id_style('sd-b32'),
+                entities={'ab.md': entity(active_id, 'Active Slug', 'backlog')},
+                archived={'archived-prefix.md': entity(archived_id, 'Archived Prefix', 'done')},
+            )
+
+            result = run_status(tmpdir, '--resolve', 'ab', '--archived',
+                                script_path=self.script_path)
+            self.assertNotEqual(result.returncode, 0)
+            self.assertIn('ambiguous', result.stderr)
+            self.assertIn('scope=active', result.stderr)
+            self.assertIn('scope=archived', result.stderr)
+
+            active = run_status(tmpdir, '--resolve', 'active:ab', '--archived',
+                                script_path=self.script_path)
+            self.assertEqual(active.returncode, 0, active.stderr)
+            self.assertIn('slug=ab', active.stdout)
+            self.assertIn('scope=active', active.stdout)
+
+    def test_set_and_archive_accept_sd_b32_unique_prefix_in_active_scope(self):
+        ident = sd_b32_id('gh')
+        with tempfile.TemporaryDirectory() as tmpdir:
+            make_pipeline(tmpdir, readme_with_id_style('sd-b32'), {
+                'prefix-target.md': entity(ident, 'Prefix Target', 'backlog'),
+            })
+
+            set_result = run_status(tmpdir, '--set', 'gh', 'status=ideation',
+                                    script_path=self.script_path)
+            self.assertEqual(set_result.returncode, 0, set_result.stderr)
+            self.assertIn('status: backlog -> ideation', set_result.stdout)
+
+            archive_result = run_status(tmpdir, '--archive', 'gh', script_path=self.script_path)
+            self.assertEqual(archive_result.returncode, 0, archive_result.stderr)
+            self.assertTrue(os.path.exists(os.path.join(tmpdir, '_archive', 'prefix-target.md')))
+
+    def test_root_resolution_fails_on_cross_workflow_ambiguity_and_accepts_qualifier(self):
+        ident = sd_b32_id('jk')
+        with tempfile.TemporaryDirectory() as tmpdir:
+            first = os.path.join(tmpdir, 'alpha')
+            second = os.path.join(tmpdir, 'beta')
+            os.makedirs(first)
+            os.makedirs(second)
+            for wf_dir in (first, second):
+                readme = readme_with_id_style('sd-b32').replace(
+                    'entity-label: task',
+                    'commissioned-by: spacedock@0.0.0-test\nentity-label: task',
+                    1,
+                )
+                make_pipeline(wf_dir, readme, {
+                    'same.md': entity(ident, 'Same', 'backlog'),
+                })
+
+            ambiguous = run_status(tmpdir, '--root', tmpdir, '--resolve', 'same',
+                                   script_path=self.script_path)
+            self.assertNotEqual(ambiguous.returncode, 0)
+            self.assertIn('multiple workflows match', ambiguous.stderr)
+            self.assertIn(first, ambiguous.stderr)
+            self.assertIn(second, ambiguous.stderr)
+
+            ambiguous_prefix = run_status(tmpdir, '--root', tmpdir, '--resolve', 'jk',
+                                          script_path=self.script_path)
+            self.assertNotEqual(ambiguous_prefix.returncode, 0)
+            self.assertIn('multiple workflows match', ambiguous_prefix.stderr)
+
+            ambiguous_full_id = run_status(tmpdir, '--root', tmpdir, '--resolve', ident,
+                                           script_path=self.script_path)
+            self.assertNotEqual(ambiguous_full_id.returncode, 0)
+            self.assertIn('multiple workflows match', ambiguous_full_id.stderr)
+
+            qualified = run_status(tmpdir, '--root', tmpdir, '--resolve', 'alpha::same',
+                                   script_path=self.script_path)
+            self.assertEqual(qualified.returncode, 0, qualified.stderr)
+            self.assertIn(f'workflow={os.path.realpath(first)}', qualified.stdout)
+            self.assertIn('slug=same', qualified.stdout)
+
+    def test_root_resolution_requires_absolute_qualifier_for_duplicate_basenames(self):
+        ident = sd_b32_id('np')
+        with tempfile.TemporaryDirectory() as tmpdir:
+            first = os.path.join(tmpdir, 'one', 'plans')
+            second = os.path.join(tmpdir, 'two', 'plans')
+            os.makedirs(first)
+            os.makedirs(second)
+            for wf_dir in (first, second):
+                readme = readme_with_id_style('sd-b32').replace(
+                    'entity-label: task',
+                    'commissioned-by: spacedock@0.0.0-test\nentity-label: task',
+                    1,
+                )
+                make_pipeline(wf_dir, readme, {
+                    'same.md': entity(ident, 'Same', 'backlog'),
+                })
+
+            basename = run_status(tmpdir, '--root', tmpdir, '--resolve', 'plans::same',
+                                  script_path=self.script_path)
+            self.assertNotEqual(basename.returncode, 0)
+            self.assertIn('workflow qualifier is ambiguous', basename.stderr)
+            self.assertIn(first, basename.stderr)
+            self.assertIn(second, basename.stderr)
+
+            absolute = run_status(tmpdir, '--root', tmpdir, '--resolve', f'{first}::same',
+                                  script_path=self.script_path)
+            self.assertEqual(absolute.returncode, 0, absolute.stderr)
+            self.assertIn(f'workflow={os.path.realpath(first)}', absolute.stdout)
+            self.assertIn('slug=same', absolute.stdout)
+
+
+class TestSdB32IdConcurrency(unittest.TestCase):
+    """Filesystem-level sd-b32 ID creation simulation."""
+
+    def setUp(self):
+        self._script_dir = tempfile.mkdtemp()
+        self.script_path = build_status_script(self._script_dir)
+
+    def tearDown(self):
+        os.unlink(self.script_path)
+        os.rmdir(self._script_dir)
+
+    def test_sd_b32_style_allows_isolated_creators_and_validates_after_merge(self):
+        first_timestamp = '2026-04-28T10:00:00.000001Z'
+        second_timestamp = '2026-04-28T10:00:00.000002Z'
+        context = 'isolated-creators'
+        with tempfile.TemporaryDirectory() as tmpdir:
+            creator_a = os.path.join(tmpdir, 'creator-a')
+            creator_b = os.path.join(tmpdir, 'creator-b')
+            merged = os.path.join(tmpdir, 'merged')
+            for path in (creator_a, creator_b, merged):
+                os.makedirs(path)
+                make_pipeline(path, readme_with_id_style('sd-b32'))
+
+            first_actor = 'creator-a'
+            second_actor = 'creator-b'
+            first_id = sd_b32_expected_id(
+                creator_a,
+                seed='Shared Title',
+                actor=first_actor,
+                timestamp=first_timestamp,
+                nonce=0,
+                context=context,
+            )
+            second_id = sd_b32_expected_id(
+                creator_b,
+                seed='Shared Title',
+                actor=second_actor,
+                timestamp=second_timestamp,
+                nonce=0,
+                context=context,
+            )
+            self.assertNotEqual(first_id, second_id)
+
+            next_a = run_status(
+                creator_a, '--next-id', '--id-seed', 'Shared Title', '--id-actor', first_actor,
+                script_path=self.script_path,
+                extra_env={
+                    'SPACEDOCK_TEST_SD_B32_TIMESTAMP': first_timestamp,
+                    'SPACEDOCK_ID_CONTEXT': context,
+                },
+            )
+            next_b = run_status(
+                creator_b, '--next-id', '--id-seed', 'Shared Title', '--id-actor', second_actor,
+                script_path=self.script_path,
+                extra_env={
+                    'SPACEDOCK_TEST_SD_B32_TIMESTAMP': second_timestamp,
+                    'SPACEDOCK_ID_CONTEXT': context,
+                },
+            )
+            self.assertEqual(next_a.stdout, first_id + '\n')
+            self.assertEqual(next_b.stdout, second_id + '\n')
+
+            Path(os.path.join(merged, 'a.md')).write_text(entity(first_id, 'A', 'backlog'))
+            Path(os.path.join(merged, 'b.md')).write_text(entity(second_id, 'B', 'backlog'))
+
+            validation = run_status(merged, '--validate', script_path=self.script_path)
+            self.assertEqual(validation.returncode, 0, validation.stderr)
+
+            overview = run_status(merged, script_path=self.script_path)
+            self.assertEqual(overview.returncode, 0, overview.stderr)
+            a_line = [line for line in overview.stdout.split('\n') if ' a ' in line][0]
+            b_line = [line for line in overview.stdout.split('\n') if ' b ' in line][0]
+            self.assertTrue(a_line.startswith(shortest_unique_prefix(first_id, [first_id, second_id])), a_line)
+            self.assertTrue(b_line.startswith(shortest_unique_prefix(second_id, [first_id, second_id])), b_line)
 
 
 class TestFrontmatterParsing(unittest.TestCase):
@@ -1964,7 +2563,22 @@ class TestStatusDocstring(unittest.TestCase):
         self.assertIn('--fields', header)
         self.assertIn('--all-fields', header)
         self.assertIn('--archive', header)
+        self.assertIn('--validate', header)
+        self.assertIn('--resolve', header)
+        self.assertIn('id-style', header)
+        self.assertIn('sd-b32', header)
+        self.assertIn('--id-seed', header)
+        self.assertIn('SHA-256', header)
+        self.assertNotIn('Crockford', header)
         self.assertIn('with or without spaces', header)
+
+    def test_sd_b32_implementation_uses_hashing_not_random_token_selection(self):
+        with open(TEMPLATE_PATH, 'r') as f:
+            source = f.read()
+        self.assertIn('hashlib.sha256', source)
+        self.assertNotIn('import secrets', source)
+        self.assertNotIn('secrets.choice', source)
+        self.assertNotIn('SPACEDOCK_TEST_GENERATED_IDS', source)
 
 
 SHARED_CORE_PATH = os.path.join(
@@ -2870,8 +3484,8 @@ class TestEntityAsFolder(unittest.TestCase):
 
     # ---------- Conflict: both flat and folder present ----------
 
-    def test_conflict_prefers_folder_and_warns(self):
-        """When both flat and folder exist, folder wins and stderr warns."""
+    def test_conflict_fails_validation_before_default_output(self):
+        """When both flat and folder exist, normal output fails before trusting either form."""
         with tempfile.TemporaryDirectory() as tmpdir:
             make_pipeline(tmpdir, README_WITH_STAGES, {
                 'dup.md': entity('001', 'Flat Copy', 'backlog', '0.10'),
@@ -2879,19 +3493,11 @@ class TestEntityAsFolder(unittest.TestCase):
             make_folder_entity(tmpdir, 'dup',
                                entity('001', 'Folder Copy', 'backlog', '0.90'))
             result = run_status(tmpdir, script_path=self.script_path)
-            self.assertEqual(result.returncode, 0, result.stderr)
-            # The folder copy's title wins.
-            self.assertIn('Folder Copy', result.stdout)
-            self.assertNotIn('Flat Copy', result.stdout)
-            # Warning on stderr, not stdout.
-            self.assertIn("entity 'dup'", result.stderr)
-            self.assertIn('preferring folder', result.stderr)
-            # Exactly one row in the overview (dedup by slug).
-            data_rows = [
-                line for line in result.stdout.strip().split('\n')[2:]
-                if 'dup' in line
-            ]
-            self.assertEqual(len(data_rows), 1, result.stdout)
+            self.assertNotEqual(result.returncode, 0)
+            self.assertEqual(result.stdout, '')
+            self.assertIn('flat/folder conflict', result.stderr)
+            self.assertIn('dup.md', result.stderr)
+            self.assertIn('dup/index.md', result.stderr)
 
     # ---------- --set on a folder entity ----------
 
