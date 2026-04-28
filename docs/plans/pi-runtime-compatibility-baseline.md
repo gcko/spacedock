@@ -163,3 +163,9 @@ A reasonable implementation order is:
 ### Summary
 
 This ideation pass reframes #147 as a minimum-runtime baseline problem rather than a full-parity runtime port. The recommended first slice is a first-class Pi runtime adapter that supports worktrees, fresh dispatch, wait, same-worker reuse, and explicit shutdown, with `tests/test_gate_guardrail.py --runtime pi` as the first meaningful proof.
+
+### Feedback Cycles
+
+- Cycle 1 — validation gate rejected after dual review. Findings routed back to `implementation`.
+  - Reviewer consensus flagged three serious issues: Pi FO path is not actually wired to `PiWorkerRuntime` / `PiSessionRegistry`; `PiWorkerRuntime.shutdown()` is metadata-only and does not shut down live/background workers; Pi ensign runtime docs conflict with the non-interactive reopen-by-session model.
+  - Additional findings included concurrent reuse of an already-active worker session, missing session-path fallback in reuse, and non-atomic registry persistence.
