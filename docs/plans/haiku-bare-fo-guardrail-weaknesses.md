@@ -25,6 +25,10 @@ The two patterns are independent in their shape:
 - Final assistant text: "To proceed, I need one of the following: ... What workflow would you like me to process?" — FO gives up asking for clarification.
 - Resulting test verdict: `FAIL: first officer presented gate review` (regex `gate review|recommend approve|recommend reject` never matches because FO never reached the gate). 6/7 other checks trivially pass (negative assertions: "did NOT advance", "did NOT self-approve").
 
+2026-04-28 recurrence on PR #159 (`claude-live-bare`, CI run `25058370658`, job `73405230791`) confirmed the same Pattern A class with a more dangerous discovery outcome: the runtime `cwd` started inside the temp test project, but FO then executed commands from `/home/runner/work/spacedock/spacedock` and `status --discover` selected the repository's real `docs/plans` workflow instead of the fixture workflow. The fixture entity stayed at `status: work`, so the gate-hold negative checks passed incidentally, but the FO never presented a gate review for `gate-test-entity`. This is still a #200 bootstrap/wrong-cwd failure, not an SD-B32 regression.
+
+That PR #159 failure also exposed a marker/harness gap: the known xfail was guarded on `model == "claude-haiku-4-5"`, while the CI make target passed the default pytest alias `model == "haiku"` and the runtime log reported the concrete model as `claude-haiku-4-5-20251001`. The behavior belongs to Pattern A; the alias miss is a separate test-marker normalization issue that should be fixed so the known weakness is consistently classified as XFAIL.
+
 **Pattern B — `test_feedback_keepalive` tool-shape discipline failure.** The haiku-bare FO completes the workflow end-to-end but with wrong tool shapes. Evidence (from `spacedock-test-h42ehkks` CI artifact):
 - Impl dispatch at line 54 correctly uses `subagent_type="spacedock:ensign"`.
 - Validation dispatch at line 98 uses `subagent_type=None` (generic Agent, not spacedock:ensign). Path-A predicate requires `spacedock:ensign`; doesn't match.
@@ -35,7 +39,7 @@ The two patterns are independent in their shape:
 
 ## Proposed approach
 
-**Near-term (ship in #190's PR before #132 merges):** permanent `@pytest.mark.xfail(strict=False)` guarding `team_mode == "bare" and model == "claude-haiku-4-5"` on BOTH test_gate_guardrail and test_feedback_keepalive, with reason strings citing this task (#200). This silences the currently-visible failures without weakening the test assertions themselves — stronger models (haiku-teams, opus-*) still exercise the full protocol.
+**Near-term (ship in #190's PR before #132 merges):** permanent `@pytest.mark.xfail(strict=False)` guarding bare-mode haiku on BOTH test_gate_guardrail and test_feedback_keepalive, with reason strings citing this task (#200). The guard must treat `haiku`, `claude-haiku-4-5`, and concrete runtime variants such as `claude-haiku-4-5-20251001` as the same class. This silences the currently-visible failures without weakening the test assertions themselves — stronger models (haiku-teams, opus-*) still exercise the full protocol.
 
 **Medium-term (this task's scope):** investigate whether FO prose changes (shared-core dispatch contract, runtime adapter, skill prompt) could improve haiku-bare reliability on these two shapes. Concrete candidates:
 - For Pattern A: sharpen startup-procedure prose so haiku less readily cd's away from the test project; reinforce that `status --discover` must run in the test-project cwd. Possibly add a `startup-sanity-check` helper that fails loudly if the cwd doesn't contain the workflow dir.
@@ -46,7 +50,7 @@ The two patterns are independent in their shape:
 ## Acceptance criteria
 
 **AC-1 — Near-term xfail lands with #190 PR (#132).**
-Verified by: `grep -n 'pending #200\|#200 — bare-haiku' tests/test_gate_guardrail.py tests/test_feedback_keepalive.py` returns one match per test. `make test-live-claude-bare` with `--model claude-haiku-4-5 --effort low` reports both tests as XFAIL (not FAILED). PR #132 CI goes green on claude-live-bare.
+Verified by: `grep -n 'pending #200\|#200 — bare-haiku' tests/test_gate_guardrail.py tests/test_feedback_keepalive.py` returns one match per test. `make test-live-claude-bare` with the default `haiku` alias and an explicit `--model claude-haiku-4-5 --effort low` both report the in-scope haiku-bare cases as XFAIL (not FAILED). PR #132 CI goes green on claude-live-bare.
 
 **AC-2 — Pattern A root cause documented with reproducible evidence.**
 Verified by: the entity body's Pattern A section cites specific fo-log line numbers from a named artifact + reproduces the `{PWD}` brace-bug under a minimal haiku-bare invocation.
