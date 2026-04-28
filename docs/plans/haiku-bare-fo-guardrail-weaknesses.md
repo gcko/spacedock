@@ -50,7 +50,17 @@ That PR #159 failure also exposed a marker/harness gap: the known xfail was guar
 ## Acceptance criteria
 
 **AC-1 — Near-term xfail lands with #190 PR (#132).**
-Verified by: `grep -n 'pending #200\|#200 — bare-haiku' tests/test_gate_guardrail.py tests/test_feedback_keepalive.py` returns one match per test. `make test-live-claude-bare` with the default `haiku` alias and an explicit `--model claude-haiku-4-5 --effort low` both report the in-scope haiku-bare cases as XFAIL (not FAILED). PR #132 CI goes green on claude-live-bare.
+The xfail guard in both tests uses a single classifier shape — `"haiku" in model.lower()` — so it classifies the pytest alias `haiku`, the canonical id `claude-haiku-4-5`, and concrete runtime variants like `claude-haiku-4-5-20251001` as the same xfail class. No alias-by-alias `or` chains, no separate guards per variant. The reason string cites this task (`#200`).
+
+Verified by:
+- `grep -nE '"haiku" in model\.lower\(\)' tests/test_gate_guardrail.py tests/test_feedback_keepalive.py` returns at least one match per file.
+- `grep -nE '#200' tests/test_gate_guardrail.py tests/test_feedback_keepalive.py` returns at least one match per file (reason-string citation).
+- Local invocation classifies all three variants as XFAIL (not FAILED) on bare mode:
+  - `unset CLAUDECODE && uv run pytest tests/test_gate_guardrail.py --runtime claude --model haiku --effort low -v`
+  - `unset CLAUDECODE && uv run pytest tests/test_gate_guardrail.py --runtime claude --model claude-haiku-4-5 --effort low -v`
+  - `unset CLAUDECODE && uv run pytest tests/test_gate_guardrail.py --runtime claude --model claude-haiku-4-5-20251001 --effort low -v`
+  - Same three invocations against `tests/test_feedback_keepalive.py`.
+- PR #132 CI goes green on claude-live-bare.
 
 **AC-2 — Pattern A root cause documented with reproducible evidence.**
 Verified by: the entity body's Pattern A section cites specific fo-log line numbers from a named artifact + reproduces the `{PWD}` brace-bug under a minimal haiku-bare invocation.
@@ -71,9 +81,21 @@ Verified by: the self-approval-scrub logic in `tests/test_gate_guardrail.py` (ar
 
 ## Test plan
 
-- **Static, primary:** AC-1 is static grep + test-marker inspection. AC-5 is `make test-static`.
-- **Behavioral, optional:** one haiku-bare run each of test_gate_guardrail + test_feedback_keepalive to confirm XFAIL disposition (not FAILED) after the marker lands. ~$0.50 total, deferrable.
-- **Medium-term ACs (AC-4):** no live runs required for the proposal; the decision or draft lives in prose.
+All verification commands run **locally** — captain has explicitly requested local-only verification for this task. No CI round-trip required for any AC except the green-CI claim in AC-1.
+
+- **AC-1 (static portion):**
+  - `grep -nE '"haiku" in model\.lower\(\)' tests/test_gate_guardrail.py tests/test_feedback_keepalive.py`
+  - `grep -nE '#200' tests/test_gate_guardrail.py tests/test_feedback_keepalive.py`
+  Both must return at least one match per file.
+- **AC-1 (behavioral, optional ~$0.50):** three local invocations per test confirm the alias-normalization works end-to-end (each must report XFAIL, not FAILED):
+  - `unset CLAUDECODE && uv run pytest tests/test_gate_guardrail.py --runtime claude --model haiku --effort low -v`
+  - `unset CLAUDECODE && uv run pytest tests/test_gate_guardrail.py --runtime claude --model claude-haiku-4-5 --effort low -v`
+  - `unset CLAUDECODE && uv run pytest tests/test_gate_guardrail.py --runtime claude --model claude-haiku-4-5-20251001 --effort low -v`
+  - Same three against `tests/test_feedback_keepalive.py`.
+- **AC-2 / AC-3 (root-cause documentation):** static — verified by reading the entity body's Pattern A / Pattern B sections. No command needed beyond `grep -n 'Pattern A\|Pattern B' docs/plans/haiku-bare-fo-guardrail-weaknesses.md`.
+- **AC-4 (medium-term proposal or defer):** static — entity body contains either a concrete before/after diff for the named files or an explicit defer decision. No live runs required.
+- **AC-5 (static suite green):** `make test-static` from repo root.
+- **AC-6 (opus extended-thinking scrub):** static portion — `grep -nE 'thinking|<thinking>' tests/test_gate_guardrail.py` to confirm the chosen mitigation (regex update, upstream strip, or opus xfail) is present and cites this AC. Optional behavioral confirmation: `unset CLAUDECODE && uv run pytest tests/test_gate_guardrail.py --runtime claude --model opus --effort high -v` reports the in-scope case as PASS or XFAIL (not FAILED).
 
 ## Out of scope
 
@@ -89,3 +111,16 @@ Verified by: the self-approval-scrub logic in `tests/test_gate_guardrail.py` (ar
 - **#194** — multi-model FO-side standing-teammate-spawn flake. Adjacent but distinct; do NOT absorb.
 - **#160** — haiku FO multi-stage dispatch compression. Related FO-tool-shape weakness on haiku; may share root cause with Pattern B.
 - Artifacts: CI run `24610475442`, job `71963876313` (claude-live-bare). Test dirs `spacedock-test-2izdmkjp` (gate_guardrail) + `spacedock-test-h42ehkks` (keepalive).
+
+## Stage Report: ideation
+
+- DONE: Test plan names a concrete LOCAL test command per AC (especially AC-1's grep and AC-5's `make test-static`) so an implementer can verify each acceptance criterion locally without round-tripping through CI.
+  Test plan rewritten with explicit `unset CLAUDECODE && uv run pytest ...` invocations per AC, plus `grep` commands for AC-1/AC-2/AC-3/AC-6 static portions and `make test-static` for AC-5.
+- DONE: AC-1's xfail-classifier shape is concretely specified: a single decorator/marker pattern that classifies `haiku`, `claude-haiku-4-5`, and concrete runtime variants as the same xfail class — no duplicated alias-by-alias guards. The pytest-marker normalization gap noted in the entity body is addressed.
+  AC-1 rewritten to pin the classifier as `"haiku" in model.lower()` (single expression matching all three variants); `grep -nE` verification command included. This closes the `test_gate_guardrail.py:41` brittle equality gap (`model == "claude-haiku-4-5"` currently misses `haiku` alias and `claude-haiku-4-5-20251001`).
+- DONE: AC items remain end-state properties, not stage actions.
+  Audited all six AC headlines — AC-1 "xfail lands", AC-2/AC-3 "root cause documented", AC-4 "proposal or defer", AC-5 "suite green", AC-6 "text does NOT bypass" — all read as end-state properties. No imperative verb-phrase rewrites needed.
+
+### Summary
+
+Refined the existing fleshed-out task body without rewriting it. Two surgical edits: (1) AC-1 now pins the xfail classifier to a single `"haiku" in model.lower()` expression that handles all three model-name variants the captain enumerated, addressing the alias-normalization gap that PR #159 surfaced; (2) Test plan now lists concrete local `uv run pytest` and `grep` commands per AC so implementer verification stays local per captain instruction. AC items already read as end-state properties; no rewrite needed.
