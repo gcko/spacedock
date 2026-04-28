@@ -9,7 +9,7 @@ verdict:
 score: 0.66
 worktree: .worktrees/spacedock-ensign-pluggable-id-style-collaboration-friendly-ids
 issue: "#150"
-pr:
+pr: #159
 mod-block: merge:pr-merge
 ---
 
