@@ -10,7 +10,7 @@ score: 0.65
 worktree: .worktrees/spacedock-ensign-status-parser-strip-inline-yaml-comments
 issue: "#163"
 pr:
-mod-block:
+mod-block: merge:pr-merge
 ---
 
 The hand-rolled YAML parser in `skills/commission/bin/status` (around line 266 in `parse_stages_block`) crashes with `ValueError: invalid literal for int() with base 10: '2  # teammate-debate mode'` when a stage frontmatter has an inline `#` comment on a numeric value line.
