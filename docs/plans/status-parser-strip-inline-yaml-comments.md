@@ -1,13 +1,13 @@
 ---
 id: 222
 title: "status --boot crashes with ValueError when stage YAML has inline comment on value line"
-status: ideation
+status: implementation
 source: "GitHub issue #163 (filed by Kent Chen / iamcxa, 2026-04-29)"
 started: 2026-04-29T14:56:54Z
 completed:
 verdict:
 score: 0.65
-worktree:
+worktree: .worktrees/spacedock-ensign-status-parser-strip-inline-yaml-comments
 issue: "#163"
 pr:
 mod-block:
