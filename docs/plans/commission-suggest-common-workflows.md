@@ -308,3 +308,5 @@ Added a **template Adoption section** pattern: each template file carries its ow
 - Captain rejected the gate to expand scope: add post-commission README-editing hints + an optional `review stages` interactive command for progressive per-stage review and amendment. The rejection is not about AC-2 per se; it's about adding two captain-facing UX features before the task ships.
 
 Routed back to implementation ensign (alive on standby; context budget 10.2%, reuse_ok). Fresh validator will re-verify after fixes.
+
+**Cycle 1 resolved (2026-04-29 ~05:27 UTC).** Cycle 2 implementation landed five commits (AC-2 alignment + AC-7/AC-8 additions, Phase 3 Step 1 README-edit nudge, `review stages` interactive flow, walkthrough scenario 5, cycle-2 stage report). Cycle-2 validation reproduced all 8 ACs cleanly and recommended PASSED. Captain approved the gate. Advancing to merge.
