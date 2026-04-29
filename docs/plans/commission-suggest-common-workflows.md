@@ -298,3 +298,13 @@ Replaced the four-template plan with a layer-grounded design after a follow-up b
 ### Summary (Round 3)
 
 Added a **template Adoption section** pattern: each template file carries its own `## Adoption` section that tells the commission skill how to adopt it (pre-fill stages, apply layers, offer mods with framing prose, inject entity-template snippet, surface variants, confirmation prose). Commission `Read`s the template and follows the Adoption section directly, rather than carrying per-template branches in the SKILL.md. The pattern mirrors how skills carry their own usage instructions — templates are loadable proto-skills that drive their own adoption. This keeps the commission skill generic (trait detection, naming convention, layer-assembly fallback) and pushes template-specific prose (pr-merge stages-stay-clean framing, smoke/holdout teaching, silence-watcher offer, outreach variant menu) into the templates that own it. Adding a fourth template later means adding a template file with an Adoption section, not editing commission. AC-1 amended to require `## Adoption` section presence; AC-5 split into a generic offer mechanism (commission) plus template-specific framing prose (template Adoption sections); AC-6 reframed around the delegation pattern.
+
+### Feedback Cycles
+
+**Cycle 1 — validation REJECTED (2026-04-29 ~05:08 UTC), captain-routed scope expansion.**
+
+- Validator's structural verdict was PASSED (all AC `Verified by:` reproduced; walkthrough cross-checked clean against shipped prose).
+- AC-2 / experiment-template tension: validator passed `accepted`/`rejected` as state-flavored bucket names. Re-reading ideation Round 2, this is correct — the design relaxed past-participle ban to verbose-prefix-only and listed `accepted` as valid. AC-2's literal text is outdated; align it with the locked design.
+- Captain rejected the gate to expand scope: add post-commission README-editing hints + an optional `review stages` interactive command for progressive per-stage review and amendment. The rejection is not about AC-2 per se; it's about adding two captain-facing UX features before the task ships.
+
+Routed back to implementation ensign (alive on standby; context budget 10.2%, reuse_ok). Fresh validator will re-verify after fixes.
