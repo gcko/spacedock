@@ -98,3 +98,13 @@ Two assertions:
 ### Summary
 
 Verified the field list against the actual `parse_stages_block` code: five per-state type-cast fields plus two defaults, all matching the issue reporter's list (with one consistency-pass addition for the optional pass-through fields). Pinned the test host to the existing `tests/test_status_script.py` rather than creating a new file (existing module already builds the script and exercises its parser, so it's the right shape). Marked PyYAML migration and quoted-string handling as explicitly out of scope per the issue's own framing.
+
+### Feedback Cycles
+
+**Cycle 1 — captain-flagged spec-correctness gap, post-PR (2026-04-29 ~15:20 UTC).**
+
+PR #167 opened with the helper implemented as `value.split('#', 1)[0].strip()` per the issue reporter's pseudo-fix. Captain caught that this is naive: YAML 1.2.2 §6.6 specifies `#` is a comment marker only when preceded by whitespace (or at start of line) AND not inside a quoted scalar. The naive split mangles legitimate values like `github#23`, `opus#beta`, and `"#160"` (the repo's own `pr:`/`issue:` field convention).
+
+Fix: swap the helper to a whitespace-anchored regex `re.sub(r'\s+#.*$', '', value).rstrip()` and add negative tests covering `prefix#hash`, `model: opus#beta`, and quoted `"#160"` to lock the spec-correct behavior in. Same branch (`spacedock-ensign/status-parser-strip-inline-yaml-comments`); PR #167 auto-updates with new commits.
+
+Out of scope: the `pr: #44` corner case (unquoted value starting with `#`). The hand-rolled parser strips leading whitespace before yielding the value, so the helper sees no whitespace marker. Fixing this perfectly requires source-text context. None of the in-scope fields naturally start with `#`, so we accept this gap rather than thread source-line context through.
