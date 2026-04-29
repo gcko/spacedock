@@ -1,13 +1,13 @@
 ---
 id: 223
 title: "id-style change should be forward-only — accept legacy sequential IDs when README declares sd-b32"
-status: ideation
+status: implementation
 source: "GitHub issue #169 (filed by CL, 2026-04-29)"
 started: 2026-04-29T21:21:01Z
 completed:
 verdict:
 score: 0.6
-worktree:
+worktree: .worktrees/spacedock-ensign-forward-only-id-style-mixed-mode
 issue: "#169"
 pr:
 mod-block:
