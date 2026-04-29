@@ -9,7 +9,7 @@ verdict:
 score: 0.65
 worktree: .worktrees/spacedock-ensign-status-parser-strip-inline-yaml-comments
 issue: "#163"
-pr:
+pr: #167
 mod-block: merge:pr-merge
 ---
 
