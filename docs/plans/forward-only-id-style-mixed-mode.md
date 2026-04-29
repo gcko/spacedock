@@ -93,3 +93,17 @@ The prefix-lookup branch at status:1593 (`stored_id.startswith(value)`) operates
 ### Summary
 
 Pinned the change to a single branch (status:701-714): accept numeric stored ids alongside sd-b32 stored ids when `id-style: sd-b32` is declared, using `is_valid_sd_b32_id(x) or x.isdigit()` and a single shared `seen` dict. Confirmed via re-read of status:631-661 that the display layer needs no edits, and confirmed the next-id and prefix-lookup paths are already mixed-tolerant. Test plan adds three pytest cases under the existing `TestPluggableIdStyle` class, reusing the established `make_pipeline`/`entity`/`sd_b32_id` helpers; symmetry for other id-styles, migration helpers, and grouped display were ruled out of scope.
+
+### Feedback Cycles
+
+**Cycle 1 — validation REJECTED (2026-04-29 ~21:36 UTC), driving-use-case spot-check failed.**
+
+Cycle-1 implementation passed all 6 ACs against synthetic fixtures, but the validator's bonus driving-use-case spot-check (flip `docs/plans/README.md` to `id-style: sd-b32`, run `--boot` against the real workflow) produced `duplicate sd-b32 stored id` errors against pre-existing archive-only duplicate ids (`131` × 2 — claude-team-context-limit-config-lie + codex-first-officer-reused-worker-wait-bookkeeping; `033` × 2 — graceful-degradation-without-teams + initial-prompt-frontmatter; plus other archive duplicates the validator's audit summary cited).
+
+Root cause: the new sd-b32 branch lacks the active-vs-archive scope tolerance the sequential branch has at status:684-690 (which skips duplicate groups when no active entity participates). Synthetic fixtures all created active-vs-active duplicates, never archive-vs-archive — so the gap wasn't exercised.
+
+Captain decision: drop archive-only duplicate-checking entirely (option 2 from FO triage). Both branches skip duplicate groups whose members are all in archive scope. Active-vs-archive collisions remain rejected (cross-references would silently break otherwise). Archive-only collisions are cosmetic data quirks in commit history, not runtime correctness issues.
+
+This conceptual reframe explains the existing sequential-branch tolerance: archive entries are historical record, not workflow state. The sd-b32 branch should match.
+
+Routing cycle 2 to the implementation ensign on standby (context 5.3%, reuse_ok). New AC + new test case for archive-only duplicate tolerance; small code mirror of the existing sequential-branch logic into the sd-b32 branch.
