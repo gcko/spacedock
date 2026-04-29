@@ -1,16 +1,17 @@
 ---
 id: 221
 title: "Commission should suggest common workflows"
-status: implementation
+status: done
 source: "GitHub issue #156 (filed by CL, 2026-04-28)"
 started: 2026-04-28T21:17:43Z
-completed:
-verdict:
+completed: 2026-04-29T21:19:43Z
+verdict: PASSED
 score: 0.5
-worktree: .worktrees/spacedock-ensign-commission-suggest-common-workflows
+worktree: 
 issue: "#156"
 pr: "#161"
 mod-block: 
+archived: 2026-04-29T21:19:43Z
 ---
 
 ## Problem
