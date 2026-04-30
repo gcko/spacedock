@@ -9,7 +9,7 @@ verdict:
 score: 0.55
 worktree: .worktrees/spacedock-ensign-claude-team-stage-heading-italic-parenthetical
 issue: "#178"
-pr:
+pr: #179
 mod-block: merge:pr-merge
 ---
 
