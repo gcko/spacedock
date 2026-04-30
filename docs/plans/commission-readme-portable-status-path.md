@@ -1,6 +1,6 @@
 ---
 id: 5aqx95ck26bvj6dafmsa4rns
-title: "Status-viewer paths in commission-generated READMEs are per-machine, breaking team-shared workflows"
+title: "Commissioned README should not reference machine-specific paths or status usage"
 status: backlog
 source: "GitHub issue #172 (filed by Jared Scott / gcko, 2026-04-30)"
 started:
@@ -13,30 +13,50 @@ pr:
 mod-block:
 ---
 
-The `commission` skill template at `skills/commission/SKILL.md` lines 401, 409, 415, 662 generates README invocations using the `{spacedock_plugin_dir}` placeholder, which gets resolved at commission time into the captain's absolute per-machine path:
+## Problem (as filed by reporter)
+
+`commission` generates READMEs containing absolute per-machine status invocations:
 
 ```
 /Users/<user>/.claude/plugins/cache/spacedock/spacedock/0.11.0/skills/commission/bin/status --workflow-dir <dir>
 ```
 
-Three sources of per-machine drift in that path:
+Three sources of per-machine drift: username, plugin version directory, cache prefix. Single-operator workflows are unaffected. Team-shared workflows break silently for every operator other than the original commissioner — `command not found` with no in-README hint.
 
-- **Username** — different on every operator's machine
-- **Plugin version directory** (`0.11.0`) — drifts on plugin upgrades, even on the same machine
-- **Cache prefix** — `~/.claude/plugins/cache/...` is the Claude Code default; differs across runtimes (Codex, Gemini)
+## Captain-directed scope (2026-04-30)
 
-Single-operator workflows are unaffected (the path works for the commissioner). Team-shared workflows break silently for every operator other than the original commissioner — they hit `command not found` with no in-README hint that the path needs per-machine resolution.
+A standalone `spacedock` CLI on PATH is the systemic fix (gives plugin CLIs the portability property agents already have via `{plugin}:{agent}` identifiers), but it's a bigger change. For now, the scope is to fix the commissioned README directly along three constraints:
 
-## Suggested fix shapes (Jared listed three; for ideation)
+1. **No machine-specific paths.** The commissioned README must not embed `~/.claude/plugins/cache/...` (or any other per-machine absolute path). The `{spacedock_plugin_dir}` placeholder must not be resolved into the generated README.
 
-**A — CLI wrapper on PATH.** Provide `spacedock status …` (or similar) that operators install once via the plugin's setup. README uses the portable form. Highest effort; cleanest end-state.
+2. **No status-usage prose.** The commissioned README must not document `status` invocation at all. Status usage is encapsulated in the first-officer skill — that's where the runtime knows how to find and use it. Captains who want to inspect workflow state run the FO; the FO knows how. Captains who want raw `status` access read the FO skill prose; the README doesn't need to teach them.
 
-**B — Portable resolution pattern in template.** Generate a small inline shell snippet that resolves the plugin directory at runtime (e.g., `claude plugin path spacedock`, an env var, or a launcher script the plugin can drop into `~/.local/bin/spacedock-status`). Medium effort; preserves the "no extra install" property.
+3. **Refer to the first-officer skill.** The commissioned README's runtime-entrypoint section becomes: "to operate this workflow, run `claude --agent spacedock:first-officer`." That's it. The first-officer agent identifier is portable because the plugin loader resolves it the same way on every machine.
 
-**C — Documentation note in generated README.** Add a per-machine-path call-out explaining the path is captain-specific and how teammates resolve it. Cheapest; preserves silent-break for teammates who don't read prose.
+4. **Refit checks the constraints.** When `spacedock:refit` runs against an existing workflow, it verifies the README does not contain machine-specific paths and does not document status usage. If it finds either, it flags the drift to the captain and offers to regenerate the relevant README sections to the new shape.
 
-## Adjacent context
+## Concrete edits in `skills/commission/SKILL.md`
 
-- Reporter is the third external contributor to file an issue against this repo (after Kent Chen and CL). Multi-operator use is now an exposed surface.
-- The `commission-suggest-common-workflows` design (#221, just shipped) introduced the `development` template explicitly recommending sd-b32 IDs for collaborative workflows — the framing already assumes multi-operator workflows are first-class. This task closes the per-machine-path gap that surfaced once captains actually tried that.
-- Current behavior is captured at SKILL.md:401, 409, 415, 503, 634, 662 — six interpolation sites total.
+The interpolation sites identified in the original intake (lines 401, 409, 415, 662) all need to be removed or replaced with FO-skill references. Same for setup-time prose at lines 503 and 634 (those are setup instructions, not generated README content — keep those, since setup is captain-machine-local by definition).
+
+The "Workflow State" section in the generated README (currently shows `status --next` example invocations) becomes either dropped entirely or replaced with one line: "Workflow state is read by the first officer at boot. Run `claude --agent spacedock:first-officer` to view current state."
+
+## Acceptance hints (for ideation)
+
+- AC: generated README contains zero `{spacedock_plugin_dir}` placeholders or absolute cache paths (grep guard).
+- AC: generated README contains zero `bin/status` references (grep guard).
+- AC: generated README runtime-entrypoint section is the canonical FO-invocation line.
+- AC: `spacedock:refit` detects either machine-specific paths or status-usage prose in an existing README and surfaces the drift to the captain.
+- AC: regression — commissioning a fresh workflow produces a README that passes the above grep guards.
+
+## Out of scope
+
+- Standalone `spacedock` CLI wrapper on PATH (the systemic fix; captain has it in mind for a separate larger task — flagged here for cross-reference).
+- Migration helper for existing already-commissioned READMEs (refit's check + offer-to-regenerate covers the upgrade path).
+- Other absolute paths in commissioned files (mod source paths in setup prose, etc.) unless they fall into the same anti-pattern at commission time.
+
+## Cross-references
+
+- **#221** (commission templates + Trait Detection, just shipped) — the proximate cause: trait detection now confidently produces multi-operator workflows for team-flavored missions, exposing the per-machine path as a plurality rather than an edge case.
+- **GH #172** original framing offered three fix shapes (CLI wrapper, portable resolution snippet, doc note). The captain chose a fourth: encapsulate status in the FO and remove status from the README.
+- Deferred follow-up: standalone `spacedock` CLI (captain-future).
