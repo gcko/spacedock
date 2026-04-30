@@ -1,7 +1,7 @@
 ---
 id: s68tqg0gqqyy8hpc2py48gq9
 title: "debrief discovery should ignore .claude/worktrees workflow copies"
-status: implementation
+status: validation
 source: "GitHub issue #174 (filed by Kent Chen / iamcxa, 2026-04-30)"
 started: 2026-04-30T19:47:24Z
 completed:
