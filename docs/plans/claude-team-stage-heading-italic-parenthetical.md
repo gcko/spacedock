@@ -143,3 +143,40 @@ Regression guard: existing seven `TestExtractStageSubsection` tests must remain 
 ### Summary
 
 Reframed the ideation away from the original brittle regex-extension toward a two-direction approach: a permissive first-content-token extractor (Direction A) that survives any reasonable Markdown decoration, plus a fail-loud `ValueError` diagnostic (Direction B) integrated with `cmd_build` so unparseable-but-mentioned headings surface a structured error instead of silent fallthrough to break-glass. AC items are end-state properties with explicit `Verified by:` clauses; test plan covers both directions plus regression preservation of the seven existing #138/PR-145 tests. No prior stage report existed, so no feedback cycle marker was needed.
+
+## Stage Report: implementation
+
+- DONE: Replace `extract_stage_subsection` regex match with the permissive Direction A approach (strip decoration → check first content token equals stage name)
+  Implemented `_heading_tokens` + `_heading_first_token` helpers; `extract_stage_subsection` now matches when the heading's first content token equals `stage_name` after stripping `` ` *_~ `` and treating `(` / `[` as token terminators. Commit `c0e4b8f6`.
+- DONE: Add Direction B fail-loud path: raise `ValueError` with line number + raw heading + parsing requirement when stage name appears as a heading token but not the first one; return `None` when genuinely absent
+  Secondary scan uses `_heading_tokens` (token-level, not raw substring) so partial-name lookups like `wor` against `### \`work\`` still return `None`. Error message includes line number, `repr(heading)`, and the phrase "first content token". Commit `c0e4b8f6`.
+- DONE: Update `cmd_build` to catch `ValueError` from `extract_stage_subsection` and surface via `_build_error`
+  `try`/`except ValueError` wraps the call at `claude-team:269-273` and forwards `str(e)` to `_build_error`, giving the captain a structured stderr diagnostic with non-zero exit. Commit `c0e4b8f6`.
+- DONE: Add regression tests to `tests/test_claude_team.py::TestExtractStageSubsection` per entity test plan (8 new permissive-parser tests + 2 fail-loud) + E2E test in `TestBuildStageHeadingParentheticalE2E`
+  Added 11 unit tests (italic, underscore-italic, bold-name, bold-annotation, mixed-decoration, square-bracket, trailing-text, 4 parameterized real-world #178 cases, fail-loud-when-mentioned, return-None-when-absent) and 1 subprocess E2E test (`test_build_surfaces_unparseable_heading_diagnostic`). Existing 7 TestExtractStageSubsection tests + existing E2E test unchanged and green. Commit `2c5d7ca6`.
+- DONE: Local verification — `unset CLAUDECODE && uv run pytest tests/test_claude_team.py -v` and `make test-static`
+  `tests/test_claude_team.py`: 105 passed (22 in the two affected classes). `make test-static`: 553 passed, 26 deselected, 15 subtests passed in 28.87s.
+
+### Summary
+
+Implemented Direction A (permissive first-content-token extractor) and Direction B (fail-loud `ValueError` for headings that mention the stage name but don't parse) in `skills/commission/bin/claude-team`, plus `cmd_build` `try`/`except` to surface the diagnostic on stderr. Refined Direction B's substring check to operate on tokens rather than raw substring so the existing `test_rejects_partial_match` (`wor` against `### \`work\``) continued to return `None` instead of raising — only headings that contain the stage name as a real word now trigger fail-loud. All 7 prior `TestExtractStageSubsection` tests + the prior E2E test remain unchanged and green. Two commits per stage discipline: `c0e4b8f6` (source) and `2c5d7ca6` (tests).
+
+## Stage Report: validation
+
+- DONE: Run `make test-static` and `unset CLAUDECODE && uv run pytest tests/test_claude_team.py::TestExtractStageSubsection tests/test_claude_team.py::TestBuildStageHeadingParentheticalE2E -v` from the worktree; cite exit codes and pass/fail counts in the report.
+  `make test-static` → exit 0, 553 passed, 26 deselected, 15 subtests passed in 28.81s. Targeted run → exit 0, 22 passed in 0.11s (7 prior TestExtractStageSubsection + 13 new TestExtractStageSubsection + 2 TestBuildStageHeadingParentheticalE2E).
+- DONE: For each AC-1..AC-7 in the entity body, name the cited test from its `Verified by:` clause and confirm the run in step 1 covered it. Flag any AC whose cited test does not appear in the run output.
+  AC-1 → `test_matches_italic_wrapped_parenthetical`, `test_matches_underscore_italic_parenthetical`, `test_matches_bold_wrapped_name`, `test_matches_bold_annotation`, `test_matches_mixed_decoration`, `test_matches_square_bracket_annotation`, `test_matches_trailing_text_after_name` — all PASSED.
+  AC-2 → `test_raises_when_stage_mentioned_but_not_first_token` — PASSED.
+  AC-3 → `test_rejects_nonexistent_stage` — PASSED (also `test_returns_none_when_stage_truly_absent` PASSED).
+  AC-4 → `test_rejects_partial_match` — PASSED.
+  AC-5 → `TestBuildStageHeadingParentheticalE2E::test_build_surfaces_unparseable_heading_diagnostic` — PASSED.
+  AC-6 → `test_matches_real_world_178_examples` (4 parameterized cases: brainstorm, capture, pr-review, handoff) — all PASSED.
+  AC-7 → 7 prior TestExtractStageSubsection tests (`test_matches_backtick_bare_heading`, `test_matches_bare_heading`, `test_matches_backtick_heading_with_parenthetical`, `test_matches_bare_heading_with_parenthetical`, `test_matches_backtick_heading_with_arbitrary_parenthetical`, `test_rejects_nonexistent_stage`, `test_rejects_partial_match`) — all PASSED with no test changes.
+  No AC has a missing cited test.
+- DONE: Issue a PASSED or REJECTED recommendation. If REJECTED, name the failing AC and the missing or contradictory evidence.
+  PASSED.
+
+### Summary
+
+Validation cross-check: `make test-static` is green (553 passed) and the targeted `TestExtractStageSubsection` + `TestBuildStageHeadingParentheticalE2E` run is green (22 passed, 0 failures). Every AC-1..AC-7 has its cited `Verified by:` test present in the run output and passing — including the 7 regression-guard tests for AC-7 unchanged. Recommendation: PASSED.
