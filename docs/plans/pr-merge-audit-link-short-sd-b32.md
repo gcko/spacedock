@@ -1,13 +1,13 @@
 ---
 id: yv8kbe048ad4y1mb0dtqe5dj
 title: "pr-merge audit link should render the short SD-B32 prefix, not the full 24-char stored ID"
-status: ideation
+status: implementation
 source: "Captain observation 2026-04-30 during PR #179 — `[jaafh7xzz0va63rj6bgdgh3p](...)` is unreadable; operators and transcripts refer to the entity as `ja`. Captain direction: 'edit pr mod to use short handles for id=sd-b32'"
 started: 2026-04-30T23:35:00Z
 completed:
 verdict:
 score: 0.6
-worktree:
+worktree: .worktrees/spacedock-ensign-pr-merge-audit-link-short-sd-b32
 issue:
 pr:
 mod-block:
