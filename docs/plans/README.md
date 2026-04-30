@@ -3,7 +3,7 @@ commissioned-by: spacedock@0.11.0
 entity-type: entity
 entity-label: task
 entity-label-plural: tasks
-id-style: sequential
+id-style: sd-b32
 stages:
   defaults:
     worktree: false
