@@ -1,16 +1,17 @@
 ---
 id: s68tqg0gqqyy8hpc2py48gq9
 title: "debrief discovery should ignore .claude/worktrees workflow copies"
-status: validation
+status: done
 source: "GitHub issue #174 (filed by Kent Chen / iamcxa, 2026-04-30)"
 started: 2026-04-30T19:47:24Z
-completed:
-verdict:
+completed: 2026-04-30T23:32:17Z
+verdict: PASSED
 score: 0.55
-worktree: .worktrees/spacedock-ensign-debrief-tolerate-missing-workflow-status
+worktree: 
 issue: "#174"
 pr: #177
 mod-block: 
+archived: 2026-04-30T23:32:21Z
 ---
 
 `skills/debrief/SKILL.md:22` runs the workflow-discovery grep with `--exclude-dir=.worktrees` (among others) but does NOT exclude `.claude/worktrees`. In repos where agent-created git worktrees live under `.claude/worktrees/...`, every worktree carries a copy of the workflow README, so debrief discovery returns the primary workflow + N duplicate copies. The captain has to disambiguate even when there's a single intended workflow in the primary checkout.
