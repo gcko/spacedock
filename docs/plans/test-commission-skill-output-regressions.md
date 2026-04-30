@@ -122,3 +122,15 @@ Per the dispatch, this task bundles into 5a's PR #176 once ideation gate passes.
 
 Pinned the live 2/68 failure shape, root-caused both failures to `skills/commission/SKILL.md:482-483` plus LLM seed-entity prose, and surfaced the architectural conflict that simply deleting the `cp` would break pr-merge runtime. Recommended Option A (extend `scan_mods` to discover plugin-shipped mods, with workflow-local shadowing and a captain opt-out path) so the fix lands as a one-shot mechanism upgrade rather than mechanism breakage. Captain ratifies direction at the gate; implementation will share 5a's worktree per dispatch.
 
+
+### Feedback Cycles
+
+**Cycle 1 — captain reframed at ideation gate (2026-04-30 ~22:25 UTC).**
+
+Captain picked **Option B-ii + A2** after reviewing what was actually leaked in `_mods/pr-merge.md`. The 4 leaks in pr-merge.md (`{number}`, `{branch}` x2, `{entity title}`, `{constructed body}`) are not commission-time slots — they're documentation prose telling the FO what to substitute at merge-hook execution time. The mod is correctly written; the test's leak-scan was overly broad for `_mods/*.md`.
+
+So the architectural shift in Option A (plugin-mods auto-discovery + opt-out mechanism) is unwarranted for this task. Keep the install model (`cp` from plugin source). Refine the test instead.
+
+Captain's chosen direction: **B-ii** — the one-line scope change replaces leak-scan on `_mods/*.md` with a byte-compare against plugin source. Same coverage for "no leaks", plus a freshness signal that catches accidental edits to the local copy or stale-after-plugin-upgrade drift. **A2** for the 5th leak (refit-command.md `{current_version}`) — fix at content source by adjusting commission's seed-entity scaffolding.
+
+Re-routing ideation to rewrite Approach + ACs + Test plan around B-ii + A2.
