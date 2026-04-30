@@ -9,7 +9,7 @@ verdict:
 score: 0.55
 worktree: .worktrees/spacedock-ensign-debrief-tolerate-missing-workflow-status
 issue: "#174"
-pr:
+pr: #177
 mod-block: merge:pr-merge
 ---
 
