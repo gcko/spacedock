@@ -1,9 +1,9 @@
 ---
 id: 5aqx95ck26bvj6dafmsa4rns
 title: "Commissioned README should not reference machine-specific paths or status usage"
-status: backlog
+status: ideation
 source: "GitHub issue #172 (filed by Jared Scott / gcko, 2026-04-30)"
-started:
+started: 2026-04-30T19:47:24Z
 completed:
 verdict:
 score: 0.7
