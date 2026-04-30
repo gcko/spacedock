@@ -120,30 +120,10 @@ A task reaches done when validation is complete and CL approves the result. The 
 
 ## Workflow State
 
-View the workflow overview:
+Workflow state is read by the first officer at boot. To view current state, dispatch the first officer or run it directly:
 
-```bash
-skills/commission/bin/status docs/plans
 ```
-
-Output columns: ID, SLUG, STATUS, TITLE, SCORE, SOURCE.
-
-Include archived tasks with `--archived`:
-
-```bash
-skills/commission/bin/status docs/plans --archived
-```
-
-Find dispatchable tasks ready for their next stage:
-
-```bash
-skills/commission/bin/status docs/plans --next
-```
-
-Find tasks in a specific stage:
-
-```bash
-grep -l "status: ideation" docs/plans/*.md
+claude --agent spacedock:first-officer
 ```
 
 ## Task Template
