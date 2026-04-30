@@ -1,9 +1,9 @@
 ---
 id: 197
 title: "test_commission: commission skill produces leaked templates, absolute paths, unwanted _mods/pr-merge.md"
-status: backlog
+status: ideation
 source: "PR #131 CI (#154 cycle-1 pre-merge) — after #154 lifted the content-drift xfail and swapped test_commission's static content reads to `assembled_agent_content`, 60/63 inner checks pass; 3/63 remain FAIL on all three claude variants (claude-live, claude-live-bare, claude-live-opus)"
-started:
+started: 2026-04-30T22:10:38Z
 completed:
 verdict:
 score: 0.7
