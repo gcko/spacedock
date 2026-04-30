@@ -1,7 +1,7 @@
 ---
 id: jaafh7xzz0va63rj6bgdgh3p
 title: "claude-team build stage-heading regex doesn't tolerate italic-wrapped parentheticals (residual #138 case)"
-status: implementation
+status: validation
 source: "GitHub issue #178 (filed by FO from captain report, 2026-04-30)"
 started: 2026-04-30T22:49:21Z
 completed:
