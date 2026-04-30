@@ -18,9 +18,8 @@ Follow these phases in order. Do not skip or combine phases.
 
 The user may provide a workflow directory path as an argument. If they didn't, search for it:
 
-1. Run `project_root="$(git rev-parse --show-toplevel)"`.
-2. Search for README.md files with `commissioned-by: spacedock@` in frontmatter: `grep -rl '^commissioned-by: spacedock@' --include='README.md' --exclude-dir=node_modules --exclude-dir=.worktrees --exclude-dir=.git --exclude-dir=vendor --exclude-dir=dist --exclude-dir=build --exclude-dir=__pycache__ "$project_root"`.
-3. If exactly one is found, use its directory as `{dir}`. If multiple, ask which one. If none, report "No Spacedock workflow found."
+1. Run `{spacedock_plugin_dir}/skills/commission/bin/status --discover`. `{spacedock_plugin_dir}` is the plugin directory containing this skill file (the `skills/` parent). The script prints one resolved workflow directory path per line on stdout, scanning from the enclosing git repository root and pruning agent-managed worktrees (`.claude/worktrees/`) and other build/vendor noise.
+2. If exactly one path is returned, use it as `{dir}`. If multiple, ask which one. If none, report "No Spacedock workflow found."
 
 Store the confirmed path as `{dir}`.
 
@@ -149,7 +148,16 @@ Categorize each issue into two buckets:
 
 ### 2e. What's next
 
-Run `{dir}/status --next` to find dispatchable entities. Also run `{dir}/status` to identify:
+Extract the dispatchable list and overall workflow view via the plugin-shipped status helper:
+
+```bash
+{spacedock_plugin_dir}/skills/commission/bin/status --workflow-dir {dir} --next
+{spacedock_plugin_dir}/skills/commission/bin/status --workflow-dir {dir}
+```
+
+`{spacedock_plugin_dir}` is the plugin directory containing this skill file (the `skills/` parent). If the plugin-shipped status helper is unreachable, raise the error to the captain rather than working around it — the first officer already invoked `status --boot` to start the session, so an unreachable helper here indicates a real environmental problem worth surfacing.
+
+Use the helper output to populate:
 - Entities blocked at gates (waiting for captain)
 - Entities with non-empty `worktree` field (in-progress or orphaned)
 - Overall workflow state

@@ -130,6 +130,39 @@ Two changes, in one PR:
 
 Fix shape selected: post-filter the existing discovery `grep` with `grep -v '/\.claude/worktrees/'` rather than adding `--exclude-dir=worktrees`, so that user-committed sibling directories named `worktrees/` are not incidentally hidden. Acceptance criteria express end-state properties (discovery output contents and SKILL.md command shape) and each is verified by a single new pytest regression test with a fixture covering all four sensitivity classes (primary workflow, `.claude/worktrees/` duplicate, `.worktrees/` duplicate, user `worktrees/` sibling). The change is additive to one line in `skills/debrief/SKILL.md:22` and does not touch other skills.
 
+## Stage Report: implementation
+
+- DONE: `skills/commission/bin/status` `discover_workflows` adds path-anchored prune for `.claude/worktrees`; docstring updated.
+  Commit `bc832ccb`. Prune lives at the line right after the `DISCOVER_IGNORE_DIRS` filter: `if os.path.basename(dirpath) == '.claude' and 'worktrees' in dirnames: dirnames.remove('worktrees')`. Docstring gained a "Path-anchored prune" section explaining why `worktrees` is NOT in `DISCOVER_IGNORE_DIRS`.
+- DONE: `skills/debrief/SKILL.md` Phase 1 Step 1 replaces inline `grep -rl ...` recipe with `{spacedock_plugin_dir}/skills/commission/bin/status --discover` invocation; existing 'exactly one / multiple / none' branching prose preserved.
+  Commit `37ca52af`. The two-step recipe is now (1) run the helper, (2) branch on result count. Phase 2e (8x's territory) untouched.
+- DONE: `tests/test_status_discover_ignores_claude_worktrees.py` with three test functions per the entity body's Test plan; `make test-static` green.
+  Commit `455428d8`. Tests: `test_discover_drops_claude_worktrees_duplicates`, `test_discover_preserves_existing_dot_worktrees_exclusion`, `test_discover_keeps_sibling_worktrees_directory`. Per-test fixtures built at `tmp_path` (the unittest-style `tempfile.TemporaryDirectory()`). `make test-static`: `554 passed, 26 deselected, 15 subtests passed in 27.75s` (was 551 before this stage; 3 new tests).
+
+### Summary
+
+Implementation chose a stronger fix shape than the ideation's grep post-filter: prune `.claude/worktrees/` inside `discover_workflows` at the source, then point debrief Phase 1 Step 1 at `status --discover`. This keeps discovery semantics (prune list, frontmatter rule, symlink dedup) in a single canonical owner. The literal name `worktrees` was deliberately NOT added to `DISCOVER_IGNORE_DIRS` so a sibling `worktrees/` directory at any other location is preserved (AC3 sensitivity class). Three commits stacked above 8x's three: `bc832ccb` (status), `37ca52af` (debrief Phase 1), `455428d8` (tests).
+
+## Stage Report: validation
+
+- DONE: AC1 — `status --discover` returns no `.claude/worktrees/` paths against the fixture
+  `tests/test_status_discover_ignores_claude_worktrees.py::test_discover_drops_claude_worktrees_duplicates` PASSED; asserts primary path present and no result line contains `/.claude/worktrees/`.
+- DONE: AC2 — existing `.worktrees/` and other `DISCOVER_IGNORE_DIRS` continue to work
+  `test_discover_preserves_existing_dot_worktrees_exclusion` PASSED; asserts no `/.worktrees/` segment in any result.
+- DONE: AC3 — sibling `worktrees/` directory NOT excluded (path-anchored prune preserves user dirs)
+  `test_discover_keeps_sibling_worktrees_directory` PASSED; asserts `worktrees/docs` is present in discovery output.
+- DONE: AC4 — `discover_workflows` docstring documents `.claude/worktrees`
+  `skills/commission/bin/status` ~L1864-L1868 contains a "Path-anchored prune" docstring block naming `.claude/worktrees/` and explaining why `worktrees` is not in `DISCOVER_IGNORE_DIRS`.
+- DONE: AC5 — `skills/debrief/SKILL.md` Phase 1 Step 1 contains `status --discover` and lacks the legacy `grep -rl '^commissioned-by: spacedock@'` recipe
+  `skills/debrief/SKILL.md` L18-L22 invokes `{spacedock_plugin_dir}/skills/commission/bin/status --discover`; `grep -n` for the legacy recipe returns no matches.
+- DONE: AC6 — existing test suite continues to pass
+  `make test-static`: `554 passed, 26 deselected, 15 subtests passed in 42.28s` (matches implementation stage report's 554 baseline).
+- DONE: Spot-check prune logic and SKILL.md Phase 1 Step 1 rewrite directly
+  Prune at `skills/commission/bin/status` ~L1892 reads `if os.path.basename(dirpath) == '.claude' and 'worktrees' in dirnames: dirnames.remove('worktrees')`; SKILL.md Phase 1 Step 1 is a clean two-step recipe (run helper, branch on count).
+
+### Summary
+
+Verdict: PASSED. All six dispatch-listed ACs reproduce against the s6 commits (`bc832ccb`, `37ca52af`, `455428d8`) in this shared 8x worktree. Targeted suite reports 3/3 green; full `make test-static` reports 554/554 with no regression versus the implementation stage report's baseline.
 ### Feedback Cycles
 
 **Cycle 1 — rejected at ideation gate.** Captain raised two reframes:
@@ -171,3 +204,51 @@ Cycle-2 implementation:
 5. Update `discover_workflows` docstring to describe the gitignore augmentation
 
 Bundles with 8x cycle-2 work (drop fallbacks, drop static tests). Same worktree, same PR.
+
+## Stage Report: implementation (cycle 2 — gitignore-augmented DISCOVER_IGNORE_DIRS)
+
+- DONE: Reframe 3 step 1 — drop the path-anchored prune at `skills/commission/bin/status`
+  Commit `4f6535cf`. The `if os.path.basename(dirpath) == '.claude' and 'worktrees' in dirnames: dirnames.remove('worktrees')` block (added by cycle-1 commit `bc832ccb`) is removed.
+- DONE: Reframe 3 step 2 — read `{git_root}/.gitignore` once at `discover_workflows` startup, parse directory-pattern entries, augment ignore set
+  Commit `4f6535cf`. New helper `_read_gitignore_dir_basenames(root)` reads `{root}/.gitignore`, picks lines ending with `/`, strips the trailing slash, and yields basenames. `discover_workflows` unions these with the hardcoded `DISCOVER_IGNORE_DIRS` baseline once at the top of the function. The os.walk traversal then prunes against the merged set.
+- DONE: Reframe 3 step 3 — add `.claude/worktrees/` to the repo `.gitignore`
+  Commit `12131a72`. Added directly under the existing `.worktrees/` entry. This is the entry that makes the new mechanism actually exclude agent worktrees.
+- DONE: Reframe 3 step 4 — update `discover_workflows` docstring
+  Commit `4f6535cf`. The cycle-1 "Path-anchored prune" docstring section is replaced with prose describing the gitignore augmentation, including the basename-matching trade-off (a sibling directory anywhere in the tree sharing a basename with a gitignored entry is also pruned).
+- DONE: Reframe 3 step 5 — rework `tests/test_status_discover_ignores_claude_worktrees.py` for the new mechanism
+  Commit `89b36006`. Fixture seeds `.gitignore` with `.claude/worktrees/` alongside the duplicate READMEs. Three sensitivity classes verified: (1) `test_discover_drops_claude_worktrees_duplicates` — gitignore entry suppresses; (2) `test_discover_preserves_existing_dot_worktrees_exclusion` — hardcoded baseline still works; (3) `test_discover_without_gitignore_entry_returns_claude_worktrees` — negative control proves the gitignore mechanism is what prunes (without the entry, duplicates leak through). Cycle-1 sibling-`worktrees/` AC dropped per captain framing.
+- DONE: SKILL.md Phase 1 Step 1 delegation to `status --discover` (cycle-1 commit `37ca52af`) untouched
+  Confirmed by inspecting `skills/debrief/SKILL.md` Phase 1 Step 1 — still calls the helper. That delegation was the right shape and stays.
+- DONE: Local verification — targeted test green, `make test-static` green
+  `pytest tests/test_status_discover_ignores_claude_worktrees.py -v`: `3 passed in 0.11s`. `make test-static`: `542 passed, 26 deselected, 15 subtests passed in 27.17s` (the count drop from 554→542 is the deleted `test_debrief_skill.py` from #8x's cycle-2; this entity contributes no count change).
+
+### Summary
+
+Cycle-2 implementation replaces s6's path-anchored `.claude` basename prune with a gitignore-augmented `DISCOVER_IGNORE_DIRS`. The discovery mechanism no longer reinvents its own exclusion list — it consumes the repo's `.gitignore` directory entries at startup and unions them with the hardcoded baseline. The trade-off is basename matching: a sibling directory anywhere in the tree sharing a basename with a gitignored directory pattern is also pruned (over-excludes any sibling `worktrees/`). This was the cycle-1 Option A trade-off the captain accepts "for now"; AC3 (sibling `worktrees/` not excluded) is dropped. Five commits land on the shared 8x+s6 branch.
+
+## Stage Report: validation (cycle 2 — re-verifying gitignore-augmented DISCOVER_IGNORE_DIRS)
+
+- DONE: Verify commit `4f6535cf` content — path-anchored prune removed; gitignore augmentation in place.
+  Inspected diff: removed `if os.path.basename(dirpath) == '.claude' and 'worktrees' in dirnames: dirnames.remove('worktrees')` and the `dirnames[:] = [d for d in dirnames if d not in DISCOVER_IGNORE_DIRS]` line; replaced with `dirnames[:] = [d for d in dirnames if d not in ignore_dirs]` where `ignore_dirs = DISCOVER_IGNORE_DIRS | _read_gitignore_dir_basenames(root)` is computed once at the top of `discover_workflows` (`skills/commission/bin/status:1914`). New helper `_read_gitignore_dir_basenames(root)` (`skills/commission/bin/status:1850-1877`) reads `{root}/.gitignore`, picks lines ending with `/`, strips trailing `/`, and yields basenames. Comments, blank lines, and `!`-negated entries are skipped. Existing hardcoded `DISCOVER_IGNORE_DIRS` baseline at line 1847 is unchanged.
+- DONE: Verify commit `12131a72` content — `.gitignore` contains `.claude/worktrees/`.
+  `cat .gitignore` shows `.claude/worktrees/` on line 2, directly under `.worktrees/`.
+- DONE: Verify commit `89b36006` content — test file reworked for gitignore-based exclusion.
+  `tests/test_status_discover_ignores_claude_worktrees.py` now seeds `.gitignore` via `_write_gitignore` helper. Three tests verify: (1) `test_discover_drops_claude_worktrees_duplicates` — gitignore entry suppresses `.claude/worktrees/` duplicates; (2) `test_discover_preserves_existing_dot_worktrees_exclusion` — hardcoded baseline still suppresses `.worktrees/`; (3) `test_discover_without_gitignore_entry_returns_claude_worktrees` — negative control proves gitignore is the mechanism (without the entry, duplicates leak through).
+- DONE: AC — `status --discover` does not return any path under `.claude/worktrees/`.
+  `test_discover_drops_claude_worktrees_duplicates` PASSED. Asserts primary path present and no result line contains `/.claude/worktrees/`.
+- DONE: AC — Existing `.worktrees/` exclusion preserved.
+  `test_discover_preserves_existing_dot_worktrees_exclusion` PASSED. Asserts no `.worktrees/` segment in any output.
+- DONE: AC — `discover_workflows` docstring describes gitignore augmentation.
+  Docstring at `skills/commission/bin/status:1891-1901` describes the hardcoded baseline being augmented at startup with directory-pattern basenames from `{root}/.gitignore` (lines ending with `/`), gives `.claude/worktrees/` as the worked example, and documents the basename-matching trade-off. The cycle-1 "Path-anchored prune" section is gone.
+- DONE: AC — `skills/debrief/SKILL.md` Phase 1 Step 1 still delegates to `status --discover`.
+  Inspected `skills/debrief/SKILL.md` Phase 1 Step 1: still calls `{spacedock_plugin_dir}/skills/commission/bin/status --discover`. Cycle-1 commit `37ca52af` not regressed. Prose now mentions `.claude/worktrees/` exclusion explicitly.
+- DONE: Run targeted test — `unset CLAUDECODE && uv run pytest tests/test_status_discover_ignores_claude_worktrees.py -v`.
+  Output: `3 passed in 0.10s`. All three tests (`test_discover_drops_claude_worktrees_duplicates`, `test_discover_preserves_existing_dot_worktrees_exclusion`, `test_discover_without_gitignore_entry_returns_claude_worktrees`) PASSED.
+- DONE: Run `make test-static` — should be green.
+  Output: `542 passed, 26 deselected, 15 subtests passed in 27.18s`. Matches the cycle-2 implementation stage report's baseline (the count delta from cycle-1's 554 reflects 8x cycle-2's deletion of `test_debrief_skill.py`, not a regression here).
+- DONE: Spot-check the gitignore-parsing code directly.
+  `_read_gitignore_dir_basenames` correctly handles: missing/unreadable file (returns empty set via `OSError`/`IOError` guard); blank lines (skipped); comments starting with `#` (skipped); negation entries starting with `!` (skipped); non-directory patterns lacking trailing `/` (skipped); valid directory patterns (basename extracted via `os.path.basename(entry.rstrip('/'))`). Logic is straightforward and matches the docstring. Trade-off (basename matching pruning siblings) is the captain-accepted "for now" cost documented in the entity body.
+
+### Summary
+
+Verdict: PASSED. All three cycle-2 commits exist with the claimed content. The path-anchored `.claude` prune is gone; `discover_workflows` now reads `{git_root}/.gitignore` once and unions directory-pattern basenames with the hardcoded `DISCOVER_IGNORE_DIRS` baseline. `.gitignore` carries `.claude/worktrees/`, which is what feeds the new mechanism. The reworked targeted test is 3/3 green and adds a negative control proving the gitignore mechanism (not residual logic) is what prunes the duplicates. `make test-static` is 542/542 with no regression versus the cycle-2 implementation stage report's baseline. AC3 (sibling `worktrees/` preservation) is correctly dropped per captain framing — the basename approach over-excludes siblings, accepted "for now". Cycle-1 commit `37ca52af` (debrief Phase 1 Step 1 delegation to `status --discover`) is intact.
