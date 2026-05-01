@@ -10,7 +10,7 @@ score: 0.55
 worktree: .worktrees/spacedock-ensign-claude-team-stage-heading-italic-parenthetical
 issue: "#178"
 pr: #179
-mod-block: merge:pr-merge
+mod-block: 
 ---
 
 The `extract_stage_subsection` regex in `skills/commission/bin/claude-team` was hardened in #138 / PR #145 to tolerate trailing parentheticals like `### \`triaged\` (terminal)`. It does NOT tolerate italic-wrapped parentheticals like `### \`brainstorm\` *(captain-interactive — no ensign)*`.

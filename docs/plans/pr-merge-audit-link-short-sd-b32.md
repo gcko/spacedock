@@ -10,7 +10,7 @@ score: 0.6
 worktree: .worktrees/spacedock-ensign-pr-merge-audit-link-short-sd-b32
 issue:
 pr: #180
-mod-block: merge:pr-merge
+mod-block: 
 ---
 
 ## Problem
