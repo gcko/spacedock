@@ -1,16 +1,17 @@
 ---
 id: k9s1zdwzfmdzdayjdvjjpj6f
 title: "FO-owned `### Feedback Cycles` section should live on the worktree branch, not main"
-status: ideation
+status: done
 source: "Captain observation 2026-04-30 during PR #176 + PR #177 rebase: feedback cycles entries on main collide with worktree-branch stage reports, producing painful merge conflicts in the entity body when the PR lands"
 started: 2026-05-01T00:48:15Z
-completed:
-verdict:
+completed: 2026-05-01T04:04:49Z
+verdict: REJECTED
 score: 0.65
 worktree:
 issue:
 pr:
 mod-block:
+archived: 2026-05-01T04:04:49Z
 ---
 
 The FO Write Scope (shared-core) currently gives the first officer write rights to the `### Feedback Cycles` section in entity bodies on main:

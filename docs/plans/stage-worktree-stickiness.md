@@ -2,7 +2,7 @@
 id: "214"
 title: "Stage worktree stickiness — once in a worktree, stay until terminal"
 status: backlog
-source: "GitHub issue #104 (filed by CL). Surfaced during the spacedock-prompt/experiments workflow (template-simplification variants for FO), variant 015 tighten-hedging, when the entity transitioned from a `run` (worktree: true) stage to an `analyze` stage that inherited the workflow default `worktree: false`. FO had to override config to keep `analyze` inside the `run` worktree so it could read the run artifacts (_results/{slug}.json + submodule experiment branches)."
+source: GitHub issue #104 (filed by CL). Originally surfaced via the spacedock-prompt/experiments workflow (template-simplification variants for FO, variant 015 tighten-hedging). Today's session (2026-04-30) extended scope: PR #176, #177, #180 each hit entity-body merge conflicts because the FO writes `### Feedback Cycles` to main while the worktree branch writes stage reports to the same trailing region — folded entity `k9s` (`feedback-cycles-on-worktree-not-main`, archived) into this task as a sub-scope on captain direction.
 started:
 completed:
 verdict:
@@ -127,6 +127,31 @@ Estimated cost: low-to-medium. Shared-core edit + status script preservation che
 - `skills/commission/bin/claude-team::cmd_build` — dispatch prompt assembly; check whether it reads entity `worktree:` field or re-derives from stage config
 - `skills/commission/bin/status::_set` + `_archive` — frontmatter field preservation logic
 - External workflow `spacedock-prompt/experiments` — originating use case (not in this repo)
+- **Folded sub-scope (entity `k9s` archived 2026-04-30):** `### Feedback Cycles` routing under stickiness — see `## Folded sub-scope: Feedback Cycles routing` below.
+
+## Folded sub-scope: Feedback Cycles routing
+
+Folded from entity `k9s` (`feedback-cycles-on-worktree-not-main`) on 2026-04-30 per captain direction after the cycle-2 ideation gate. PR #176 / #177 / #180 in this session each hit a merge conflict in the entity body because the FO writes `### Feedback Cycles` to main while the worktree branch writes stage reports to the same trailing region.
+
+Under the stickiness invariant from this entity, the cycle-routing rule becomes a one-line corollary: cycle entries are entity-body content, entity-body content during in-flight stages lives where stage reports live, stage reports live in the worktree under stickiness — therefore cycle entries live in the worktree while `worktree:` is set, and on main only before the first worktree-creating dispatch. The terminal merge brings the worktree-side entries onto main.
+
+Concrete shared-core changes folded in (in addition to the reuse-condition #3 reword named in `## FO contract intersection`):
+
+- **`## FO Write Scope`** (`first-officer-shared-core.md:218`) — replace the unconditional `### Feedback Cycles` bullet with a sub-clause naming both states: `When \`worktree:\` is set, the FO writes the cycle entry to the worktree copy and commits on the worktree branch; when \`worktree:\` is empty, the FO writes to main.` Anchor phrase: `When \`worktree:\` is set`.
+- **`## Feedback Rejection Flow`** (`first-officer-shared-core.md:178`) — replace `keeps it on the main branch` with `Routing follows FO Write Scope: worktree-side when \`worktree:\` is set, main-side otherwise.`
+- **`## Worktree Ownership`** (`first-officer-shared-core.md:206`) — add `### Feedback Cycles` to the list of body content that stays in the worktree during in-flight stages.
+- **`## FO Write Scope` "Entity body content beyond `### Feedback Cycles`"** (`first-officer-shared-core.md:228`) — clarify the carve-out applies in the appropriate view.
+- **`claude-first-officer-runtime.md:155`** (cooperative-shutdown sweep / cycle-detection reader) — add a one-line view-clarification parenthetical so the reader operates on the worktree copy when `worktree:` is set.
+
+Folded ACs (renumber as part of `21`'s final AC list during `21`'s ideation):
+
+- **AC (Feedback Cycles, worktree-side write):** When `worktree:` is set on an entity, the FO writes new `### Feedback Cycles` entries inside the worktree copy of the entity file and commits on the worktree branch; the main copy of the entity file is untouched until PR merge. Verified by extending `tests/test_rejection_flow.py` with two assertions after the FO routes feedback back to implementation: `git -C {worktree_path} show HEAD:{workflow_dir}/{slug}.md` contains the new cycle entry; `git show main:{workflow_dir}/{slug}.md` does not contain it.
+- **AC (Feedback Cycles, merge-clean with control case):** Two consecutive feedback cycles on a worktree-backed entity merge into main with zero conflicts in the entity file, and a control case proves the test exercises the actual PR #176/#177 conflict shape. Verified by a new offline test `tests/test_feedback_cycles_merge_clean.py` plus a fixture under `tests/fixtures/feedback-cycles-merge/`. Treatment case (worktree-side cycle entry placed line-adjacent to stage-report region) merges clean (`git merge` exit 0, zero `<<<<<<<` markers). Control case (cycle entry on main, old rule) reproduces the conflict — proving the test is not passing because of benign whitespace separation.
+- **AC (Feedback Cycles, shared-core wording with structural anchors):** `first-officer-shared-core.md` describes the conditional routing rule with anchors readers and tests can rely on. Verified by extending `tests/test_repo_edit_guardrail.py` static-content phase with two literal-substring assertions: `When \`worktree:\` is set` inside the FO Write Scope `### Feedback Cycles` bullet's surrounding paragraph; `worktree-side when \`worktree:\` is set, main-side otherwise` in the Feedback Rejection Flow section.
+
+The standalone-shipping form of `k9s` (with additional ACs for empty-worktree, bare-mode equivalence, no-migration policy) is preserved in the archived entity body for reference; under stickiness those three ACs collapse and are not folded in.
+
+The full cycle-2 design rationale (architectural answers, findings-under-stickiness, test plan) lives in `docs/plans/_archive/feedback-cycles-on-worktree-not-main.md`. The ideation worker on `21` should use it as load-bearing input for the Feedback Cycles portion of `21`'s eventual design.
 
 ## Summary
 
