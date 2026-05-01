@@ -86,6 +86,10 @@ The FO treating the entity as complete despite the missing reply suggests the te
 - #178 — tool-call-discipline boilerplate (PR #113, branch `spacedock-ensign/tool-call-discipline`). #177 is the live experiment that decides whether #178 ships or whether we fall back to pinning `--model claude-opus-4-6`.
 - A separate small task (not yet filed) will fix the `extra_args` plumbing bug so #176's `model_override` actually reaches `claude -p`. That unblocks the CI mitigation proof.
 
+### Feedback Cycles
+
+- **Cycle 3 → Cycle 4 (2026-05-01).** Captain rejected cycle-3's ideation gate. Reason: cycle-3 recommended pinning `--model sonnet` as the workflow FO default, but the runtime matrix tests haiku and opus only — adding sonnet as a third configured surface complicates the matrix without justifying ROI. Direction for cycle 4: do not introduce sonnet as a third model variable; reframe under Path A (section compression), Path B (FO-side post-completion verification), Path C (file upstream Anthropic issue), or a hybrid. Cycle-4 outcome: Path B + Path C selected as the primary recommendation; Path A rejected as incomplete (verified `tests/fixtures/completion-signal-pipeline/` has no standing-teammates section, so cycle-3 AC-R2 PASS does not generalize to tonight's PR #181 opus-tier failures on `test_dispatch_completion_signal` and `test_feedback_keepalive`). The cycle-3 R1/R2/R3 evidence remains as audit data informing the cycle-4 path-selection rationale.
+
 ## Decision
 
 This task is a **focused live experiment**, not a hallucination-mitigation thesis. The mitigation under test is #178 (the tool-call-discipline boilerplate already shipped on branch `spacedock-ensign/tool-call-discipline`, PR #113). #177's deliverable is a yes/no on whether that boilerplate makes `opus-4-7` viable at `--effort low` and `--effort medium` for the standing-teammate roundtrip case that originally exposed the regression.
@@ -1039,55 +1043,66 @@ The mitigation that stays load-bearing is **(c) pin `--model sonnet` as workflow
 
 ## Final recommendation
 
-**Advance #177 to implementation against the model-pin mitigation: change spacedock workflow FO defaults from `opus` to `sonnet` until upstream Claude Code resolves the FO-on-opus-4-7 regression class.**
+**Advance #177 to implementation against Path B (FO-side post-completion verification) as the primary mitigation, with Path C (file upstream Anthropic issue) as a parallel low-cost lift. Path A (section compression) is rejected as incomplete.**
+
+### Path selection rationale (cycle-4)
+
+The captain rejected the cycle-3 sonnet-pin recommendation because the matrix tests haiku (default) and opus; introducing `sonnet` as a third configured surface complicates the matrix without justifying ROI. With sonnet off the table, the remaining mitigation paths are:
+
+- **Path A (section compression).** Cycle-3 AC-R2 PASS proves the per-teammate prose body is load-bearing on the priming surface for the standing-teammate fixture. **But the dispatch-prompt-shape priming surface is not just the standing-teammates section.** Tonight's PR #181 opus-tier failures on `test_dispatch_completion_signal` (uses fixture `completion-signal-pipeline` — verified at `tests/fixtures/completion-signal-pipeline/README.md` to have NO `_mods/` directory and NO standing teammates) and `test_feedback_keepalive` are on team-mode dispatches that DO NOT include the standing-teammates section at all. Compressing only the standing-teammates section therefore CANNOT fix those tests. To cover them under Path A would require also compressing the Completion Signal block, the team-mode framing, the checklist boilerplate, and any other prompt block that shows up in the failing fixtures — a priming-whack-a-mole game with no upper bound. This rules Path A out as a complete mitigation. Cycle-3's empirical PASS on the standing-teammate fixture remains as opportunistic evidence, not a strategy.
+- **Path B (post-completion verification).** A cross-cutting fix at the FO contract layer (`first-officer-shared-core.md` `## Completion and Gates` step 2). When a worker completes, the FO already reads the latest `## Stage Report` and reviews items against the dispatched checklist. Path B inserts a step between "review checklist items" and "AC coverage cross-check" that scans the worker's tool-call inventory in `fo-log.jsonl` for evidence of the claimed DONE actions (file writes, commits, SendMessage emissions). When a stage report claims DONE for an action class that has no corresponding tool-call evidence in the stream window for that worker, the FO routes the worker back to repair the report (existing convention in step 3) rather than accepting it. This addresses the regression's *symptom* (DONE claims without tool calls) regardless of which prompt surface caused the priming, and it naturally extends the streaming-watcher discipline (#173/#175) — currently confined to test assertions — into production. The infrastructure (`scripts/test_lib.py:1213 tool_use_matches`, `scripts/test_lib.py:1288 FOStreamWatcher`) is already present; Path B reuses the same fo-log inspection shape.
+- **Path C (file upstream Anthropic issue).** Lowest effort, defers the model-side fix. Not a mitigation in itself but a notification: shipping the cycle-2 + cycle-3 fo-logs as a starting reproducer creates upstream pressure and gives Anthropic concrete artifacts. Run in parallel with Path B because they don't compete and the cost is bounded (one issue write + 4 fo-logs attached). Keeps Path B from being the only thing standing between us and a future opus-tier regression.
+
+**Path B + Path C is the cycle-4 recommendation.** Path A's empirical AC-R2 PASS on standing-teammate routing is recorded as opportunistic evidence in the cycle-3 section but is not part of the implementation scope.
 
 ### Implementation scope
 
 The implementation stage of #177 should:
 
-1. Change `stages.defaults.model` (or equivalent) for FO-driving stages in the spacedock workflow templates from `opus` (current default) to `sonnet`. Targets: `skills/commission/templates/`, any workflow scaffolding that ships the default FO model.
-2. Document the regression context with a cross-reference to #177 in the workflow scaffolding's README or developer doc — explain why FO defaults to sonnet, link to this entity for the evidence chain.
-3. Add a TODO / re-evaluation note to revisit the default once the upstream Claude Code regression on `claude-opus-4-7` FO orchestration is resolved (no specific upstream issue exists yet — note that filing one is a separate task).
-4. Ensure the change is opt-out at the workflow level — captains who explicitly want `--model opus` for their FO should still be able to override.
+1. **Path B implementation in shared-core.** Edit `skills/first-officer/references/first-officer-shared-core.md` `## Completion and Gates` to add a stage-report-vs-tool-call cross-check step between the existing "review checklist items" step and "AC coverage cross-check." The new step must specify (a) which fo-log fields are read, (b) the rule for matching DONE claims to tool-call evidence, (c) the failure action (route back via existing step 3, no new escalation path), (d) an explicit short-list of checklist-DONE phrases that obligate a tool-call match (e.g., `committed`, `pushed`, `sent SendMessage`, `wrote file`) versus claims that do not (e.g., `read entity body`, `surveyed code`).
+2. **Path B helper, if needed.** If the cross-check is too complex to express in shared-core prose alone, add a small helper invocation (e.g., `claude-team verify-completion --name {worker} --fo-log {path}`) that returns a structured pass/fail with the specific DONE claim that lacked tool-call evidence. The helper is preferred over inlining python in the prose. Reuse `scripts/test_lib.py:1213 tool_use_matches` shape; do NOT duplicate the matcher logic.
+3. **Test coverage.** Add at least one E2E regression test asserting the cross-check fires on a known-failing fixture (e.g., synthesise a stage report claiming `SendMessage to comm-officer` while the fo-log has no SendMessage tool_use entry; assert the FO routes back rather than accepting). The streaming-watcher pattern (`w.expect(tool_use_matches(...))`) is the test-side convention; the new test asserts the FO-side equivalent fires in production.
+4. **Path C — file upstream issue.** A short Anthropic issue describing the FO-on-`claude-opus-4-7` regression (low/medium effort hallucinates DONE in stage reports without emitting tool calls), citing the cycle-2 + cycle-3 fo-log artifacts as starting reproducers. The issue is low-effort prose; the artifacts are already in `/tmp/cycle3/` and from cycle-2's `/tmp` set. Path C does NOT block Path B's merge; it ships in parallel.
 
 ### Acceptance Criteria
 
-**AC-F1 — Workflow scaffolding default points to sonnet for FO-driving stages.**
+**AC-F1 — Shared-core specifies the stage-report-vs-tool-call cross-check.**
 
-- Verify: `grep -rE "model:\s*opus|model:\s*claude-opus" skills/commission/templates/ skills/first-officer/` returns no matches at the FO-default scope; the FO default in scaffolding files is `sonnet`.
-- Pass: a captain commissioning a new spacedock workflow gets sonnet as the FO model by default. Verified by inspecting the generated workflow's stage-defaults block after running the commission flow on a fresh workspace.
-- Verified by: `tests/test_commission_skill_output.py` (or equivalent commission-output regression test) including an assertion that the default FO model stamp is `sonnet`. If no such test exists, add one as part of AC-F1's implementation.
+- Verify: `grep -nE "tool.call|fo-log" skills/first-officer/references/first-officer-shared-core.md` shows a new block in `## Completion and Gates` describing the cross-check rule. The block names: (a) which fo-log path is read (worker's session-stamped jsonl), (b) which DONE-claim phrases obligate a match, (c) the matcher contract (tool name + input substring), (d) the failure action (route back via existing step 3).
+- Pass: a future FO reading this section can implement the cross-check without referring to test code.
+- Verified by: a static test in `tests/test_first_officer_shared_core.py` (or new sibling) asserting the cross-check block exists and contains the anchor phrases `tool-call evidence` and `route back`.
 
-**AC-F2 — Regression context documented with cross-reference to #177.**
+**AC-F2 — Cross-check fires in a unit test against a synthesised fabrication.**
 
-- Verify: the workflow scaffolding's README or developer doc (likely `skills/commission/README.md` or `skills/first-officer/README.md`) contains a note explaining the sonnet default and links to `docs/plans/opus-4-7-ensign-hallucination-scope.md`.
-- Pass: `grep -lE "opus-4-7|177|FO-on-opus" skills/commission/README.md skills/first-officer/README.md` returns at least one match referring to this entity.
-- Verified by: documentation lint / static check, OR a one-line static test asserting the cross-reference string is present in the relevant README.
+- Verify: a test feeds a fixture stage report claiming `committed: changes` with a fo-log that contains no `Bash` tool_use carrying `git commit`. The cross-check helper (or inline parser) returns FAIL with a specific reference to the unmatched DONE claim.
+- Pass: helper returns structured non-zero exit OR the FO-side prose can be exercised by a unit test asserting the routing-back action.
+- Verified by: a new test file under `tests/` (likely `tests/test_completion_cross_check.py`) with at least one POSITIVE case (fo-log has the tool_use → cross-check passes) and one NEGATIVE case (fo-log lacks the tool_use → cross-check fires).
 
-**AC-F3 — Override mechanism preserved.**
+**AC-F3 — Cross-check does not regress existing tests.**
 
-- Verify: a captain can set `--model opus` on the FO via existing CLI flags (e.g., `--model opus` on `claude-team build` calls, or workflow-level model override) and the override is honored end-to-end.
-- Pass: an integration test (or existing test like `test_standing_teammate_spawn` with explicit `--model opus`) demonstrates the override path still runs through the same FO assembly logic with the captain's chosen model.
-- Verified by: an existing live test invocation with explicit `--model opus` continues to dispatch FO on opus (model stamps in fo-log.jsonl confirm). The cycle-3 AC-R2 / AC-R1 runs already establish this — no new test needed if the existing live tests cover the override.
+- Verify: full live test suite passes after Path B lands. Existing tests that exercise the FO+ensign loop on the haiku and opus matrix continue to pass.
+- Pass: `make test` (or equivalent CI-equivalent local invocation) green; specifically `tests/test_standing_teammate_spawn.py`, `tests/test_gate_guardrail.py`, `tests/test_dispatch_completion_signal.py`, `tests/test_feedback_keepalive.py` all pass on their existing model configurations.
+- Verified by: CI green on the implementation branch; the live runtime workflow exercises the matrix.
 
-**AC-F4 — Live re-confirmation on 2.1.111 before commit (or explicit waiver).**
+**AC-F4 — Path C upstream issue filed with attached artifacts.**
 
-- Verify: re-run the standing-teammate fixture with `--model sonnet --effort low` on Claude Code 2.1.111 (cycle-2's preferred version); confirm PASS. OR document a captain waiver if 2.1.111 is no longer accessible and the 2.1.121 + 2.1.112 evidence chain is accepted as sufficient.
-- Pass: a fo-log.jsonl on 2.1.111 with sonnet stamps and a green test result, OR an entity-body waiver block citing the 2-of-3 version evidence chain (2.1.112 PASS, 2.1.121 PASS).
-- Verified by: file existence check on the captured fo-log, OR presence of the waiver block in the entity body.
+- Verify: a public issue exists at `https://github.com/anthropics/claude-code/issues/...` (or the appropriate Anthropic intake) describing the regression, citing model `claude-opus-4-7`, Claude Code versions 2.1.111-2.1.121, with at least the cycle-3 fo-logs (`/tmp/cycle3/ac-r{1,2,3}-fo-log.jsonl`) attached or linked to a gist.
+- Pass: the issue URL is recorded in this entity's body (in a `## Cross-references` update at the top of the file or a new `### Upstream issue` line in the cycle-3 section).
+- Verified by: the entity body contains the issue URL; the URL resolves to a public issue. If Anthropic's intake is not public-issue-shaped, document the alternate intake (email, support form) and the artifact submission timestamp.
 
 ### Test plan
 
-- **Cost**: ~2-3 min for the commission-output regression test (static), ~5 min if AC-F4 runs the live 2.1.111 re-confirmation. AC-F1 / AC-F2 are static doc/code edits with cheap verifications.
-- **Risk**: low. Workflow defaults change is a single point of edit; override path verified by existing tests. The captain waiver path on AC-F4 is acceptable because the 2-version sonnet evidence chain (cycle-2 + cycle-3) is strong.
-- **E2E**: not strictly required — the existing live tests (`test_standing_teammate_spawn`, `test_gate_guardrail`) already cover the FO+ensign roundtrip on sonnet. AC-F4's re-confirmation is the one optional E2E step.
-- **Static**: yes — AC-F1 (default value), AC-F2 (cross-reference present), AC-F3 (override path test exists).
+- **Cost**: ~30-60 min for the shared-core prose edit + cross-check helper or inline parser + unit tests (AC-F1, AC-F2). Existing live tests continue to run on existing budget (AC-F3 — no new live runs needed unless the cross-check materially changes FO timing). Path C is ~30 min of issue prose + artifact attachment (AC-F4).
+- **Risk**: medium. The cross-check rule has to be tight enough to catch real fabrications without flagging legitimate skipped actions. The DONE-claim short-list (which phrases obligate a tool-call match) is the load-bearing piece; getting it wrong creates either false positives (FO bounces honest workers) or false negatives (the regression slips through). Mitigation: AC-F2's NEGATIVE case is the structural safety net.
+- **E2E**: AC-F3 requires the existing live suite to remain green. No NEW E2E tests are required for Path B's primary surface — unit tests against synthesised fo-logs are the right granularity, and the existing live tests already cover the integration surface.
+- **Static**: AC-F1 (block exists with anchor phrases), AC-F2 (positive + negative cross-check cases).
 
 ### Out of scope for #177 implementation
 
-- Filing the upstream Anthropic issue about FO-on-opus-4-7 regression. Separate task; #177 implementation only changes our workflow defaults.
-- Section-richness compression in `claude-team`. AC-R2 PASS makes this a viable alternative path, but it's narrower (standing-teammate surface only) than the sonnet pin and adds source-code complexity. If a future captain wants to ship section compression as a complementary mitigation, that's a follow-up entity.
-- Investigating tonight's PR #181 opus-tier failures (`test_dispatch_completion_signal`, `test_feedback_keepalive`). The sonnet pin makes those tests green by default; the underlying mechanism is mechanism-TBD and out-of-scope per cycle-2 Follow-up (b)'s revised framing.
+- Path A section compression. Cycle-3 AC-R2 PASS evidence is preserved in the cycle-3 section as opportunistic data; if a future captain wants to ship section compression as a separate complementary mitigation, that's a follow-up entity. Not part of #177 implementation.
+- Investigating the underlying upstream `claude-opus-4-7` calibration regression. Path C files the issue; the fix lives at Anthropic.
+- Extending the cross-check to Codex runtime. The cycle-2/cycle-3 evidence is Claude-Code-specific; the Codex runtime has different model-selection plumbing and was explicitly noted as not affected (Problem Statement § Not affected). If the Codex runtime needs an equivalent cross-check, it's a follow-up.
+- Backfilling the cross-check onto historical stage reports. Path B fires from the next completion forward, not retroactively.
 
 ## Stage Report: ideation
 
@@ -1101,3 +1116,18 @@ The implementation stage of #177 should:
 ### Summary
 
 Cycle-3 sanity check on current main (Claude Code 2.1.121, HEAD `465d4ffc`) re-ran cycle-2's three Layer 2 experiments. R1 PASS and R3 PASS match cycle-2; R2 PASS DIVERGED from cycle-2's FAIL — same patch, same fixture, same effort, only Claude Code drifted (2.1.112 → 2.1.121) and main advanced (PR #181 stickiness, lazy-spawn, etc.). Tonight's PR #181 opus-tier failures (`test_dispatch_completion_signal`, `test_feedback_keepalive`) confirm the FO-on-opus-4-7 regression class is still active on different test surfaces. Final recommendation: advance #177 to implementation against cycle-2's Follow-up (c) — pin `--model sonnet` as workflow FO default — because it covers ALL surfaces with a single workflow-default change, while the now-passing AC-R2 section-strip path covers only standing-teammate routing. AC-F1 through AC-F4 enumerated with verification commands and end-state tests.
+
+## Stage Report: ideation (cycle 4)
+
+- DONE: Pick a direction (A, B, C, or a hybrid) given the no-sonnet constraint, and justify with the evidence we have.
+  Path B + Path C selected as primary. Path A rejected as incomplete because `tests/fixtures/completion-signal-pipeline/` has no standing-teammates section (verified by inspection — no `_mods/` directory and no standing teammate references in the fixture README), so cycle-3 AC-R2 PASS cannot generalize to tonight's PR #181 opus-tier failures on `test_dispatch_completion_signal` and `test_feedback_keepalive`. Justification written into `## Final recommendation` § "Path selection rationale (cycle-4)".
+- DONE: Replace `## Final recommendation` with a new recommendation under the chosen direction. Tighten or rewrite AC-F1..F4 accordingly.
+  Replaced the cycle-3 sonnet-pin block with the cycle-4 Path-B + Path-C block. New AC-F1 (shared-core specifies the cross-check), AC-F2 (cross-check fires in unit test against synthesised fabrication with positive + negative cases), AC-F3 (no regression on existing tests), AC-F4 (Path C upstream issue filed). Test plan and out-of-scope sections rewritten under the new path.
+- DONE: Append a `### Feedback Cycles` entry on this entity naming the cycle-3 → cycle-4 reframe.
+  Created `### Feedback Cycles` subsection under `## Cross-references` with a single entry naming the cycle-3 → cycle-4 reframe, the captain's no-sonnet directive, and the cycle-4 outcome (Path B + Path C). Per shared-core's "the FO writes to main when worktree: is empty" rule and the dispatch's explicit instruction, the entry lives on main; this is correct because #177's frontmatter has `worktree:` empty.
+- DONE: Write a `## Stage Report: ideation (cycle 4)` documenting the rework.
+  This section.
+
+### Summary
+
+Cycle-4 reframe replaces cycle-3's sonnet-pin recommendation under the captain's no-sonnet constraint. Path A (section compression) is rejected as incomplete — the standing-teammates section is not the only priming surface; tonight's PR #181 opus-tier failures hit fixtures that don't include the section at all (`completion-signal-pipeline` has no `_mods/` directory). Path B (FO-side stage-report-vs-tool-call cross-check in `## Completion and Gates`) is selected as the primary mitigation because it addresses the regression's symptom across all priming surfaces, extends the existing streaming-watcher discipline (#173/#175) into production, and reuses existing infrastructure (`scripts/test_lib.py:1213 tool_use_matches`, `scripts/test_lib.py:1288 FOStreamWatcher`). Path C (upstream Anthropic issue) ships in parallel as a low-cost lift with the cycle-2 + cycle-3 fo-logs as starting reproducers. Cycle-3 R1/R2/R3 evidence remains as audit data; AC-R2 PASS is preserved as opportunistic data that informs path-selection but is not part of the cycle-4 implementation scope.
