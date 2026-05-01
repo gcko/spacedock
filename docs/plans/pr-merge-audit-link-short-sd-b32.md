@@ -74,6 +74,36 @@ Verified by: full static suite run.
 - Filed alongside `06z0dycs40qr0a9b35waxaxf` (refit-docs-plans-readme) which the captain ordered in the same turn.
 - The existing `[Mod Install Freshness]` byte-compare from #197 (PR #176) is the regression guard for AC-3.
 
+## Stage Report: implementation
+
+- DONE: Implement `status --short-id REF` in `skills/commission/bin/status`. For sd-b32 workflows return the shortest-unique-prefix across active+archived. For sequential and slug return the literal stored ID/slug. Reuse the existing prefix computation that powers the ID column.
+  Added `parse_short_id_arg` and `print_short_id_or_exit` (reuses `compute_sd_b32_display_ids` and `resolve_reference_candidates` with `include_archived=True`); wired into `main()` with incompat checks parallel to `--resolve`.
+- DONE: Update BOTH pr-merge mod copies identically (`mods/pr-merge.md` and `docs/plans/_mods/pr-merge.md`) so the audit-link rendering step calls `status --short-id` and inserts the result into the `[{entity-id}]` slot. After the edit, confirm `diff mods/pr-merge.md docs/plans/_mods/pr-merge.md` is empty.
+  Added a short-id computation step in `## Hook: merge` and updated the extraction-rule row to `[{short-id}](...)`; `diff` reports identical and `[Mod Install Freshness]` test is green.
+- DONE: Add `tests/test_status_short_id.py` covering AC-1 (3 id-styles) and AC-2 (sd-b32 active+archived collision forces prefix lengthening); run it and `make test-static` from the worktree and cite both pass counts in the report.
+  4/4 new short-id tests pass. `make test-static` 561 passed, 26 deselected. Updated `tests/test_pr_merge_template.py::test_template_describes_audit_link_format` to pin `[{short-id}]` and added a sibling `test_audit_link_uses_short_id_command`.
+
+### Summary
+
+Added `status --short-id REF` that returns the shortest-unique-prefix used by the ID column for sd-b32, and the literal stored ID/slug for sequential/slug. Updated both pr-merge mod copies to call `status --short-id` when rendering the audit-link `[{entity-id}]` slot, fixing the unreadable 24-char render seen on PR #179. AC-3 byte-parity is preserved (mod copies identical, `[Mod Install Freshness]` green); AC-5 full static suite is green at 561/561.
+
+## Stage Report: validation
+
+- DONE: Run `make test-static` and `unset CLAUDECODE && uv run pytest tests/test_status_short_id.py tests/test_pr_merge_template.py -v` from the worktree; cite exit codes and pass/fail counts.
+  `make test-static` exit 0, 561 passed / 26 deselected / 15 subtests passed. Targeted pytest exit 0, 32 passed (4 short-id + 28 pr-merge-template).
+- DONE: For each AC-1..AC-5 in the entity body, name the cited test from its `Verified by:` clause and confirm it appears green in the run.
+  - AC-1 (sd-b32 prefix, sequential/slug literals): `tests/test_status_short_id.py::TestShortId::test_short_id_sd_b32_returns_shortest_unique_prefix`, `::test_short_id_sequential_returns_literal_id`, `::test_short_id_slug_returns_literal_slug` — all PASSED.
+  - AC-2 (active+archived collision lengthens prefix): `tests/test_status_short_id.py::TestShortId::test_short_id_sd_b32_lengthens_prefix_when_active_archived_collide` — PASSED.
+  - AC-3 (mod byte-parity): direct `diff mods/pr-merge.md docs/plans/_mods/pr-merge.md` returns no output (exit 0). `[Mod Install Freshness]` continues green inside `make test-static`.
+  - AC-4 (audit-link template references `status --short-id`): grep on both copies shows the `## Hook: merge` instruction prose ("compute the short entity-id slot for the audit link by running `status --short-id {entity ref}`") and the extraction-rule row (`[{short-id}](...)`) at lines 40 and 68 of each copy. `tests/test_pr_merge_template.py::TestAuditMetadata::test_audit_link_uses_short_id_command` and `::test_template_describes_audit_link_format` — both PASSED.
+  - AC-5 (`make test-static` green): full static run exit 0 at 561 passed.
+- DONE: Issue PASSED or REJECTED.
+  PASSED.
+
+### Summary
+
+All five acceptance criteria verified with cited evidence. `make test-static` is green at 561/561; the targeted suite covering the new short-id helper and the pr-merge template is green at 32/32. Mod byte-parity confirmed by direct `diff` (exit 0) in addition to the `[Mod Install Freshness]` regression guard. Recommendation: PASSED.
+
 ### Feedback Cycles
 
 **Cycle 1 — captain expanded scope at push-approval gate (2026-04-30 ~23:55 UTC).**
@@ -97,3 +127,37 @@ Verified by: a new `tests/test_pr_merge_template.py` test asserts the `## Hook: 
 Verified by: `[Mod Install Freshness]` continues green after cycle-2; `diff mods/pr-merge.md docs/plans/_mods/pr-merge.md` returns empty.
 
 **Cycle 2 dispatch context:** new implementation ensign in same worktree; cycle-1 commit stays. Append cycle-2 commit on top.
+
+## Stage Report: implementation (cycle 2)
+
+Captain expanded scope at the push-approval gate after cycle 1 landed: the pre-approval draft must show the FULL templated PR body so the captain reviews the prose that will land on GitHub before push, not just Title/Branch/Changes/Files metadata. AC-6 covers the pre-approval body rendering; AC-7 (implied) is that the post-approval step becomes a literal `gh pr create` invocation against the already-constructed body — no separate construction pass.
+
+- DONE: Edit BOTH pr-merge mod copies (`mods/pr-merge.md` and `docs/plans/_mods/pr-merge.md`) so the `## Hook: merge` pre-approval draft includes the fully constructed PR body (motivation lead + `## What changed` + `## Evidence` + audit link + `Closes` line if applicable), NOT just the Title/Branch/Changes/Files metadata. The post-approval step becomes a literal `gh pr create` invocation against the already-constructed body — no separate post-approval construction step. Confirm `diff mods/pr-merge.md docs/plans/_mods/pr-merge.md` returns empty.
+  Reordered the merge hook: audit-link inputs (short SHA, owner/repo, short entity id) and the full templated PR body are now constructed BEFORE the captain draft. The draft adds a `**Body:**` line with the full body in a fenced block. On approval, the post-approval block runs push/rebase/push-branch and then `gh pr create ... --body "{constructed body}"` against the already-constructed body — explicit "do not rebuild it" wording preserved. Pre-approval prose retains the existing AC-5 strings (`git rev-parse --short HEAD`, `status --short-id`, fallback-to-`main` reported to captain). `diff mods/pr-merge.md docs/plans/_mods/pr-merge.md` returns no output (exit 0).
+- DONE: Add a `tests/test_pr_merge_template.py` test for AC-6 asserting the `## Hook: merge` pre-approval prose names the constructed PR body (template-rendered) and does NOT contain a separate post-approval body-construction step.
+  Added `TestPreApprovalDraftIncludesFullBody` with four cases: pre-approval references the body template and the `{constructed body}` placeholder; pre-approval prose names every required body section (`motivation lead`, `## What changed`, `## Evidence`, `audit link`, `Closes`); post-approval block contains no body-construction phrasing (`Build the PR body using the template`, `construct the PR body`, etc.); post-approval `gh pr create` invocation references `{constructed body}` as already-built. Hook section is bounded by `## Hook: merge` start and the `### PR body template` subsection start.
+- DONE: Run `make test-static` and `unset CLAUDECODE && uv run pytest tests/test_status_short_id.py tests/test_pr_merge_template.py -v` from the worktree; cite exit codes and pass counts.
+  `make test-static` exit 0, 565 passed / 26 deselected / 15 subtests passed (up from 561 in cycle 1: 4 new AC-6 tests). Targeted pytest exit 0, 36 passed (4 short-id + 32 pr-merge-template, of which 4 are the new `TestPreApprovalDraftIncludesFullBody` cases).
+
+### Summary
+
+Cycle 2 layered the pre-approval body-rendering scope-expansion onto the cycle-1 commit. Both mod copies now construct the full PR body (motivation lead, `## What changed`, `## Evidence`, audit link, `Closes` line) before the captain draft, present that body inside the draft so the captain reviews the actual prose, and then on approval pipe the already-constructed body verbatim into `gh pr create`. AC-6 is covered by four new tests in `TestPreApprovalDraftIncludesFullBody`; full static suite is green at 565/565; mod byte-parity preserved.
+
+## Stage Report: validation (cycle 2)
+
+- DONE: Run `make test-static` and `unset CLAUDECODE && uv run pytest tests/test_status_short_id.py tests/test_pr_merge_template.py -v` from the worktree; cite exit codes and pass counts. Expected: 565+ static, 36 targeted.
+  `make test-static` exit 0, 565 passed / 26 deselected / 15 subtests passed. Targeted pytest exit 0, 36 passed (4 short-id + 32 pr-merge-template).
+- DONE: Cross-check AC-1..AC-7. AC-1..AC-5 cited tests (cycle 1) must remain green. AC-6 cited test (`TestPreApprovalDraftIncludesFullBody`) must be present and green. AC-7 (byte-parity) verify by direct `diff mods/pr-merge.md docs/plans/_mods/pr-merge.md`.
+  - AC-1: `tests/test_status_short_id.py::TestShortId::test_short_id_sd_b32_returns_shortest_unique_prefix`, `::test_short_id_sequential_returns_literal_id`, `::test_short_id_slug_returns_literal_slug` — PASSED.
+  - AC-2: `::test_short_id_sd_b32_lengthens_prefix_when_active_archived_collide` — PASSED.
+  - AC-3: `[Mod Install Freshness]` green inside `make test-static` (565 passed includes it).
+  - AC-4: `tests/test_pr_merge_template.py::TestAuditMetadata::test_audit_link_uses_short_id_command` and `::test_template_describes_audit_link_format` — both PASSED. Direct grep on `mods/pr-merge.md` confirms `status --short-id {entity ref}` at line 31 and `[{short-id}](...)` extraction-rule row at line 77.
+  - AC-5: `make test-static` exit 0, 565 passed.
+  - AC-6: `tests/test_pr_merge_template.py::TestPreApprovalDraftIncludesFullBody::test_pre_approval_constructs_pr_body_from_template`, `::test_pre_approval_names_required_body_sections`, `::test_post_approval_does_not_reconstruct_body`, `::test_post_approval_gh_pr_create_uses_already_constructed_body` — all 4 PASSED.
+  - AC-7: `diff mods/pr-merge.md docs/plans/_mods/pr-merge.md` exit 0 (no output).
+- DONE: Issue PASSED or REJECTED.
+  PASSED. Spot-check of `mods/pr-merge.md` confirms cycle-2 body shape: short-id/short-SHA/owner-repo computed first (line 31), full body constructed before captain draft with motivation lead + `## What changed` + `## Evidence` + `[{short-id}]` audit link + `Closes` line (line 33), and post-approval step pipes `{constructed body}` verbatim into `gh pr create` with explicit "do not rebuild it" wording (line 51).
+
+### Summary
+
+Cycle 2 combined state validates green. All seven acceptance criteria (AC-1..AC-5 from cycle 1, plus AC-6 pre-approval-body and AC-7 mod byte-parity from cycle 2) verified with cited evidence: 565/565 static, 36/36 targeted, `diff` clean. Recommendation: PASSED.
