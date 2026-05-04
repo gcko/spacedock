@@ -10,7 +10,7 @@ score: 0.45
 worktree: .worktrees/spacedock-ensign-test-reuse-dispatch-static-prose-post-stickiness
 issue:
 pr: #182
-mod-block: merge:pr-merge
+mod-block: 
 ---
 
 ## Problem
