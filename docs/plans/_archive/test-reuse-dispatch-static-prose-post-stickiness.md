@@ -1,16 +1,17 @@
 ---
 id: 3gj9jz071ehf0xnstdxkh5ms
 title: "test_reuse_dispatch and other live tests embed static prose greps against shared-core wording deleted by stickiness"
-status: validation
+status: done
 source: "claude-live-opus failure on PR #181 (stickiness merge) — 3 of 4 inner checks failed; one is a true positive: `test_reuse_dispatch.py:232-233` greps shared-core for `same.*worktree.*mode` (the literal phrase surface 1 of #181 deleted)."
 started: 2026-05-01T08:37:48Z
-completed:
-verdict:
+completed: 2026-05-04T14:02:58Z
+verdict: PASSED
 score: 0.45
-worktree: .worktrees/spacedock-ensign-test-reuse-dispatch-static-prose-post-stickiness
+worktree: 
 issue:
 pr: #182
 mod-block: 
+archived: 2026-05-04T14:03:03Z
 ---
 
 ## Problem
