@@ -1,7 +1,7 @@
 ---
 id: m4ywfn5tbtsaxebf6btxrhww
 title: "status --set silently injects frontmatter into files whose first --- is a body separator"
-status: implementation
+status: validation
 source: GitHub issue #186 (clkao/spacedock)
 started: 2026-05-04T16:22:12Z
 completed:
