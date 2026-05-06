@@ -10,7 +10,7 @@ score: 0.6
 worktree: .worktrees/spacedock-ensign-status-set-injects-frontmatter-when-first-fence-is-body-separator
 issue: "#186"
 pr: #190
-mod-block: merge:pr-merge
+mod-block: 
 ---
 
 ## Problem
