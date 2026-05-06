@@ -9,7 +9,7 @@ verdict:
 score: 0.55
 worktree: .worktrees/spacedock-ensign-status-set-should-validate-stage-name-values
 issue: "#189"
-pr:
+pr: #193
 mod-block: merge:pr-merge
 ---
 
