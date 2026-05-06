@@ -1,16 +1,17 @@
 ---
 id: m4ywfn5tbtsaxebf6btxrhww
 title: "status --set silently injects frontmatter into files whose first --- is a body separator"
-status: validation
+status: done
 source: GitHub issue #186 (clkao/spacedock)
 started: 2026-05-04T16:22:12Z
-completed:
-verdict:
+completed: 2026-05-06T17:55:09Z
+verdict: PASSED
 score: 0.6
-worktree: .worktrees/spacedock-ensign-status-set-injects-frontmatter-when-first-fence-is-body-separator
+worktree: 
 issue: "#186"
 pr: #190
 mod-block: 
+archived: 2026-05-06T17:55:09Z
 ---
 
 ## Problem
