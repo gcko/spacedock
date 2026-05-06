@@ -1,13 +1,13 @@
 ---
 id: amrd1r63jfkjq14tvwnkfges
 title: "status --set should validate stage-name values against the workflow's stages.states[].name list"
-status: ideation
+status: implementation
 source: GitHub issue #189 (clkao/spacedock)
 started: 2026-05-06T08:39:40Z
 completed:
 verdict:
 score: 0.55
-worktree:
+worktree: .worktrees/spacedock-ensign-status-set-should-validate-stage-name-values
 issue: "#189"
 pr:
 mod-block:
