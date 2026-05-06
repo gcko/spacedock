@@ -9,7 +9,7 @@ verdict:
 score: 0.55
 worktree: .worktrees/spacedock-ensign-status-refuses-terminal-on-rejected-entity-with-merge-hook
 issue: "#188"
-pr:
+pr: #194
 mod-block: merge:pr-merge
 ---
 
