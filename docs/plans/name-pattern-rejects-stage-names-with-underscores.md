@@ -1,7 +1,7 @@
 ---
 id: bwck187yrng4rgxeyar1kfzz
 title: NAME_PATTERN rejects stage names with underscores
-status: implementation
+status: validation
 source: captain (CL)
 started: 2026-05-11T06:39:07Z
 completed:
