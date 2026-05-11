@@ -1,9 +1,9 @@
 ---
 id: bwck187yrng4rgxeyar1kfzz
 title: NAME_PATTERN rejects stage names with underscores
-status: backlog
+status: ideation
 source: captain (CL)
-started:
+started: 2026-05-11T06:39:07Z
 completed:
 verdict:
 score:
