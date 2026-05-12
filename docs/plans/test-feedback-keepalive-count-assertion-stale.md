@@ -164,3 +164,16 @@ E2E is intentionally *not* the proof for the assertion logic — it depends on r
 ### Summary
 
 Chose Option A: replace the stale `len(records) == 2` with two per-stage count assertions (`impl-suffix==1`, `validation-suffix==2`) keyed on `DispatchRecord.ensign_name`. The rewritten assertion still catches the original bug (impl-count would be 2) and surfaces future legitimate drift on the validation axis specifically rather than as a generic total mismatch. Proof is fixture-based unit tests in the existing `test_feedback_keepalive_helpers.py` against three synthetic dispatch-record lists (legitimate, original-bug, future-drift); live E2E is confirmation, not proof. No new helpers introduced; the count expressions inline cleanly.
+
+## Stage Report: implementation
+
+- DONE: Mechanism-check first — fixture tests in `tests/test_feedback_keepalive_helpers.py` covering legitimate / original-bug / future-drift scenarios, committed as a discrete commit before editing the live test.
+  Commit `ccbb7eee`; `uv run pytest tests/test_feedback_keepalive_helpers.py -v` shows 3 new cases green (12 total in the file).
+- DONE: Replaced stale `t.check("FO emitted exactly two ensign Agent() dispatches...")` in `tests/test_feedback_keepalive.py` with two per-stage suffix-count assertions on `DispatchRecord.ensign_name` (case-insensitive substring); SendMessage-to-kept-alive and per-dispatch-budget assertions unchanged.
+  Commit `22ae874b`; `grep -c 'len(records) == 2' tests/test_feedback_keepalive.py` → 0; new count expressions at lines 191 (`"implementation"` == 1) and 195 (`"validation"` == 2).
+- DONE: Fixture test and rewritten live-CI assertion both pass under the current 3-dispatch contract; original-bug 4-dispatch fixture still fails the impl-count check.
+  `uv run pytest tests/test_feedback_keepalive_helpers.py -v` → 12 passed; `make test-static` → 603 passed, 26 deselected. Live `claude-live-opus` confirmation is deferred to Layer 2 of the test plan (PR re-run).
+
+### Summary
+
+Wrote the fixture-based mechanism check first (3 new test cases against `DispatchRecord(ensign_name, elapsed)` from `scripts/test_lib.py`), then replaced the stale `len(records) == 2` with two suffix-count assertions keyed on `ensign_name.lower()`. Field name confirmed as `ensign_name` per `test_lib.DispatchRecord`; the failure-output sample (`('Implementation: greeting.txt', 30.2)` etc.) is the stage-prefixed Agent description used by that field, so the case-insensitive substring match works as the ideation specified without label-string special-casing. `make test-static` is green; live E2E confirmation will follow on the PR.
