@@ -177,3 +177,26 @@ Chose Option A: replace the stale `len(records) == 2` with two per-stage count a
 ### Summary
 
 Wrote the fixture-based mechanism check first (3 new test cases against `DispatchRecord(ensign_name, elapsed)` from `scripts/test_lib.py`), then replaced the stale `len(records) == 2` with two suffix-count assertions keyed on `ensign_name.lower()`. Field name confirmed as `ensign_name` per `test_lib.DispatchRecord`; the failure-output sample (`('Implementation: greeting.txt', 30.2)` etc.) is the stage-prefixed Agent description used by that field, so the case-insensitive substring match works as the ideation specified without label-string special-casing. `make test-static` is green; live E2E confirmation will follow on the PR.
+
+## Stage Report: validation
+
+- DONE: AC-1 impl-count assertion exists at value 1
+  `tests/test_feedback_keepalive.py:191` carries `sum(1 for r in records if "implementation" in r.ensign_name.lower()) == 1` on a `t.check` line; independent comprehension evaluation against L/B/D fixtures returns `True, False, True` as the AC specifies.
+- DONE: AC-2 validation-count assertion exists at value 2
+  `tests/test_feedback_keepalive.py:195` carries `sum(1 for r in records if "validation" in r.ensign_name.lower()) == 2` on a `t.check` line; comprehension evaluation against L/B/D fixtures returns `True, True, False` as the AC specifies.
+- DONE: AC-3 stale `len(records) == 2` removed
+  `grep -c 'len(records) == 2' tests/test_feedback_keepalive.py` → 0.
+- DONE: AC-4 fixture pytest green and discrimination-power confirmed
+  `uv run pytest tests/test_feedback_keepalive_helpers.py -v` → 12 passed, 0 failed; `_FIXTURE_ORIGINAL_BUG` has two impl-suffixed names so `_impl_count` returns 2 and `test_catches_original_bug_on_impl_count` asserts `!= 1` (PASS) — the new assertion still rejects the original-bug shape.
+- DONE: AC-5 stale failing-assertion text removed locally
+  `grep -c "exactly two ensign Agent" tests/test_feedback_keepalive.py` → 0; replaced by `"exactly 1 implementation-suffixed"` (line 190) and `"exactly 2 validation-suffixed"` (line 194). Live `claude-live-opus` re-run is Layer-2 downstream confirmation per the test plan; not the proof bearer for this stage.
+- DONE: Scope drift check
+  `git diff --stat 4e601cb9..057b73d4` touches only `tests/test_feedback_keepalive.py`, `tests/test_feedback_keepalive_helpers.py`, and `docs/plans/test-feedback-keepalive-count-assertion-stale.md` — exactly the allowed scope.
+- DONE: `make test-static` clean
+  `make test-static` → 603 passed, 26 deselected, 15 subtests passed in 27.51s.
+- DONE: Mechanism-check ordering held
+  `git log --oneline` shows `ccbb7eee` (fixture tests) precedes `22ae874b` (assertion swap) precedes `057b73d4` (stage report) — failing fixtures landed before the assertion edit they validate.
+
+### Summary
+
+PASSED. All five ACs independently reproduced: AC-1/AC-2 expression text + verdict matches; AC-3/AC-5 stale strings absent (0 hits each); AC-4 fixture pytest is 12 green and the original-bug fixture (two impl-suffixed records, `_impl_count == 2`) correctly fails the new `impl == 1` shape — discrimination power preserved. Scope clean (3 files, all expected), `make test-static` green (603 passed), and the three implementation commits ordered fixtures-before-swap-before-report. Layer-2 live E2E on `claude-live-opus` remains downstream confirmation per the test plan.
