@@ -8,7 +8,7 @@ completed:
 verdict:
 score:
 worktree: .worktrees/spacedock-ensign-name-pattern-rejects-stage-names-with-underscores
-mod-block: merge:pr-merge
+mod-block: 
 pr: #206
 ---
 
