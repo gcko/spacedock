@@ -1,7 +1,7 @@
 ---
 id: na9ydw9h5cvey0qmqeb96te8
 title: test_feedback_keepalive dispatch-count assertion is stale under fresh validation
-status: validation
+status: implementation
 source: captain (CL) — observed on PR #208 cycle-3 live-CI (claude-live-opus job)
 started: 2026-05-12T18:47:19Z
 completed:
