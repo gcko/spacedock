@@ -92,7 +92,7 @@ Present gate reviews in this format:
 
 ```
 Gate review: {entity title} — {stage}
-Chosen direction: {one-line summary of the ensign's chosen approach, or `n/a` for stages without a chosen-direction concept (validation, work, merge)}
+Chosen direction: {one-line summary of the ensign's chosen approach, or `n/a` for stages without a chosen-direction concept (e.g., simple work stages, merge)}
 Recommend {approve | reject: {one-line reason}}.
 
 {paste the ## Stage Report section from the entity file verbatim, fenced in a ```markdown code block so authorship is unambiguous}
@@ -129,7 +129,7 @@ The `## Completion and Gates` section in `first-officer-shared-core.md` does not
 - **AC-2:** The `## Gate Presentation` template in `skills/first-officer/references/claude-first-officer-runtime.md` contains a `Chosen direction:` line above the pasted Stage Report and a `Decision:` line below the assessment. Verified by `grep -n "Chosen direction:" skills/first-officer/references/claude-first-officer-runtime.md` and `grep -n "^Decision:" skills/first-officer/references/claude-first-officer-runtime.md` each returning at least one hit within the `## Gate Presentation` section.
 - **AC-3:** The `## Gate Presentation` template instructs that the verbatim Stage Report paste is wrapped in a fenced ` ```markdown ` code block. Verified by grep for the substring ` ```markdown ` (or an equivalent fencing directive) inside the `## Gate Presentation` section.
 - **AC-4:** The `## Gate Presentation` template names `Reviewer findings` with the two-tier substructure `Material:` and `Polish:` and explicitly states the tier is omitted when no reviewer ran. Verified by grep for `Reviewer findings`, `Material:`, and `Polish:` all appearing in the `## Gate Presentation` section.
-- **AC-5:** A synthetic gate-message fixture, hand-assembled per the new template against the seed's `bw / name-pattern-rejects-stage-names-with-underscores` scenario (the concrete failure case that motivated this task), satisfies the seed's "fixed" criterion: a fresh-eye reader can name the chosen direction, the FO's verdict, and the decision question from the first three lines without scrolling. The fixture is committed to `docs/plans/fo-gate-presentation-buries-lede.md` under a `## Worked example` section. Verified by static reading of the fixture during validation: the first three rendered lines are `Gate review: ...`, `Chosen direction: ...`, `Recommend ...`.
+- **AC-5:** The `## Worked example` fixture in this entity body's first three non-blank, non-fence-delimiter lines, in order, match `Gate review: {...}`, `Chosen direction: {non-empty string, not the literal `n/a`}`, and `Recommend {approve|reject: ...}`. Verified by static reading of the committed fixture during validation.
 - **AC-6:** The shared-core `## Completion and Gates` section in `skills/first-officer/references/first-officer-shared-core.md` is unchanged by this task. Verified by `git diff main -- skills/first-officer/references/first-officer-shared-core.md` showing no changes.
 
 ## Test plan
@@ -201,3 +201,14 @@ For comparison, the same scenario rendered against the *current* template would 
 ### Summary
 
 Selected Option A from the seed's three directions: tighten the existing terse template with an explicit "Captain-facing assembly rules" subsection, plus one structural change (hoist a `Chosen direction:` lede line above the pasted Stage Report and add a `Decision:` line below the assessment). Wrote six AC items as end-state properties with concrete grep / git-diff / fixture-reading verification clauses, plus a worked-example fixture reconstructing the seed's motivating `bw` scenario against the new template. Test plan is entirely static-prose review at the runtime-adapter level — the bug is in adapter text, so proof is in adapter text; no live FO E2E required.
+
+## Stage Report: ideation (cycle 2)
+
+- DONE: AC-5 is subjective dressed as a check. Rewrite to the objective structural form supplied by the reviewer.
+  AC-5 rewritten verbatim per the suggested form: asserts the worked-example fixture's first three non-blank, non-fence-delimiter lines match `Gate review: {...}`, `Chosen direction: {non-empty string, not the literal `n/a`}`, and `Recommend {approve|reject: ...}`. Fresh-eye framing removed. Spot-checked the fixture: first three qualifying lines are `Gate review: name-pattern rejects...`, `Chosen direction: Option 2 — pre-validate...` (non-empty, not `n/a`), `Recommend reject: ...`.
+- DONE: Internal inconsistency between rule #2 and the template's `n/a` enumeration. Drop `validation` from the `n/a` list so rule #2 owns the chosen-direction-required claim end-to-end.
+  Template comment (in the "After" block) edited: `... or `n/a` for stages without a chosen-direction concept (validation, work, merge)` → `... or `n/a` for stages without a chosen-direction concept (e.g., simple work stages, merge)`. Rule #2 now uncontested as the authority on which stages produce a chosen direction; validation is no longer enumerated as `n/a`-eligible.
+
+### Summary
+
+Two narrow fixups applied from the staff-reviewer's approve-with-notes verdict. AC-5 swapped from fresh-eye framing to the objective structural assertion the reviewer supplied. Template comment in the proposed `## Gate Presentation` "After" block updated to drop `validation` from the `n/a` enumeration, aligning the template with rule #2 of the assembly rules (validation's PASSED-vs-REJECTED counts as a chosen direction). Worked example untouched — it already uses a real chosen direction for ideation, so reconciliation didn't require fixture changes.
