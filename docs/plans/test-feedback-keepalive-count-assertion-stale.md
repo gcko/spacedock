@@ -200,3 +200,24 @@ PASSED. All five ACs independently reproduced: AC-1/AC-2 expression text + verdi
 ### Summary
 
 Cycle-2 narrowing per captain: dropped `validation-count == 2` from both the live test and the helper fixtures; kept `impl-count == 1` as the sole dispatch-count discriminator. The original-bug fixture still fails the new shape (`_impl_count == 2`, not 1), preserving regression coverage of the load-bearing path: FO must route fixup via SendMessage to the kept-alive implementation ensign, not fresh-dispatch a second Agent(). Live `claude-live-opus` re-run is the validator's job in cycle-2 validation; local mechanism check is green.
+
+## Stage Report: validation (cycle 2)
+
+- DONE: AC-1 impl-count assertion exists at value 1
+  `tests/test_feedback_keepalive.py:191` carries `sum(1 for r in records if "implementation" in r.ensign_name.lower()) == 1` on a `t.check` line (label on `:190`). Independent comprehension evaluation: legit fixture L → `impl_count == 1` (True), original-bug fixture B → `impl_count == 2` (False) — matches AC-3's expected `True, False` verdicts.
+- DONE: AC-2 stale total-count assertion removed; validation-count assertion not present
+  `grep -c 'len(records) == 2' tests/test_feedback_keepalive.py` → 0; `grep -c 'validation-suffixed' tests/test_feedback_keepalive.py` → 0. Survey of all `t.check` lines (94, 98, 189, 193, 201, 205, 209) confirms no count assertion keyed on `"validation"`-suffixed records remains; the remaining `validation` references are `w.expect_dispatch_close` (`:154-158`), prints, and comments — not count assertions.
+- DONE: AC-3 rewritten check passes against current FO contract, fails against original bug
+  `uv run pytest tests/test_feedback_keepalive_helpers.py -v` → 11 passed in 0.01s (was 12 in cycle 1; drift case correctly removed). `TestDispatchCountAssertions::test_passes_against_current_contract` PASS, `test_catches_original_bug_on_impl_count` PASS — the latter asserts `_impl_count(_FIXTURE_ORIGINAL_BUG) != 1` against a 4-record list with two impl-suffixed names (`Implementation: greeting.txt` + `Implementation cycle 2: greeting.txt`), so the surviving `impl-count == 1` assertion still rejects the original-bug shape.
+- DONE: AC-4 live-CI claim — explicitly downstream, not run by validator
+  Per dispatch instructions, AC-4's live `claude-live-opus` re-run is the captain's responsibility before pushing. Validator does not run the live E2E (cost + time). Local Layer-1 fixture proof is green and is the load-bearing proof per the entity's test-plan section.
+- DONE: Discrimination-power check
+  Fixture-L and fixture-B independently evaluated outside pytest (`_impl_count(L) == 1` returns True; `_impl_count(B) == 1` returns False). The two fixtures diverge under the surviving assertion — discrimination preserved. Critically, the simplification did NOT collapse legit and bug into the same verdict.
+- DONE: Scope drift check
+  `git diff --stat ab598382..HEAD` shows exactly 3 files touched since the cycle-1 validation report: `docs/plans/test-feedback-keepalive-count-assertion-stale.md` (88 lines), `tests/test_feedback_keepalive.py` (4 lines), `tests/test_feedback_keepalive_helpers.py` (34 lines). All within the allowed scope. Four commits cited: `b8603b55` (cycle-1 feedback), `08b8c15d` (fixture trim), `60e3a0fe` (assertion drop), `edeb792c` (entity body + plan).
+- DONE: `make test-static` clean
+  `make test-static` → 602 passed, 26 deselected, 15 subtests passed in 27.93s. Matches the ~602 expected count cited in the dispatch (one fewer than cycle-1's 603 because the future-drift validation-axis fixture case was dropped).
+
+### Summary
+
+PASSED. Cycle-2 narrowing verified end-to-end: AC-1 impl-count expression present and verdict-correct against L/B fixtures; AC-2's two stale strings (`len(records) == 2`, `validation-suffixed`) both at 0 hits; AC-3 fixture pytest 11 green with the original-bug case still rejected by the surviving `== 1` check; AC-4 deferred to captain's local live run per dispatch. Discrimination power preserved — the simplification did not collapse legit and bug into the same verdict. Scope clean (3 files), `make test-static` green at 602 passed.
