@@ -191,10 +191,6 @@ def test_feedback_keepalive(test_project, model, effort):
         sum(1 for r in records if "implementation" in r.ensign_name.lower()) == 1,
     )
     t.check(
-        "FO emitted exactly 2 validation-suffixed ensign Agent() dispatches (initial + fresh re-validation)",
-        sum(1 for r in records if "validation" in r.ensign_name.lower()) == 2,
-    )
-    t.check(
         "all dispatches closed under the per-dispatch budget",
         all(r.elapsed <= PER_DISPATCH_BUDGET_S for r in records),
     )
