@@ -1,7 +1,7 @@
 ---
 id: 0f1smz7rrgm3rdrw5ssqtrhr
 title: FO gate presentation buries the lede and flattens reviewer priority
-status: validation
+status: implementation
 source: captain (CL) — self-critique during ideation gate on `bw / name-pattern-rejects-stage-names-with-underscores`
 started: 2026-05-12T03:38:42Z
 completed:
