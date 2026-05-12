@@ -185,18 +185,6 @@ Track "hint emitted" in session memory so it does not repeat. In bare mode and D
 
 **Single-entity mode exception:** When in single-entity mode (no interactive captain), gates auto-resolve from the stage report recommendation. PASSED (all checklist items done, no failures) → approve. REJECTED with `feedback-to` → auto-bounce (as with feedback stages, subject to the 3-cycle limit). REJECTED without `feedback-to` → report failure and exit. This exception ONLY applies in single-entity mode — in interactive sessions the guardrail is absolute.
 
-## Gate Presentation
-
-Present gate reviews in this format:
-
-```
-Gate review: {entity title} — {stage}
-
-{paste the ## Stage Report section from the entity file verbatim}
-
-Assessment: {N} done, {N} skipped, {N} failed. [Recommend approve / Recommend reject: {reason}]
-```
-
 ## Feedback Rejection Flow (bare mode)
 
 In bare mode, the feedback rejection flow is sequential: dispatch fix agent (wait for completion), then dispatch reviewer (wait for completion), then present at gate.
