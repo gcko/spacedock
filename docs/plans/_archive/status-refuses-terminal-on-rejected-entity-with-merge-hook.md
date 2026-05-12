@@ -1,13 +1,13 @@
 ---
 id: 842ja5phzj5xspyternpww31
 title: "status binary refuses terminal advancement on rejected/abandoned entities when merge hook is registered, even when no PR is intended"
-status: validation
+status: done
 source: GitHub issue #188 (clkao/spacedock)
 started: 2026-05-06T08:39:39Z
-completed:
-verdict:
+completed: 2026-05-12T21:56:36Z
+verdict: PASSED
 score: 0.55
-worktree: .worktrees/spacedock-ensign-status-refuses-terminal-on-rejected-entity-with-merge-hook
+worktree: 
 issue: "#188"
 pr: #194
 mod-block: 
