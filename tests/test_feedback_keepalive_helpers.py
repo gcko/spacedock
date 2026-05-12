@@ -15,7 +15,62 @@ import pytest
 _HERE = Path(__file__).resolve().parent
 sys.path.insert(0, str(_HERE.parent / "scripts"))
 
-from test_lib import _agent_targets_stage
+from test_lib import DispatchRecord, _agent_targets_stage
+
+
+def _impl_count(records: list[DispatchRecord]) -> int:
+    return sum(1 for r in records if "implementation" in r.ensign_name.lower())
+
+
+def _val_count(records: list[DispatchRecord]) -> int:
+    return sum(1 for r in records if "validation" in r.ensign_name.lower())
+
+
+_FIXTURE_LEGIT = [
+    DispatchRecord("Implementation: greeting.txt", 30.2),
+    DispatchRecord("Validation", 22.6),
+    DispatchRecord("Validation cycle 2", 0.0),
+]
+
+_FIXTURE_ORIGINAL_BUG = [
+    DispatchRecord("Implementation: greeting.txt", 30.2),
+    DispatchRecord("Validation", 22.6),
+    DispatchRecord("Implementation cycle 2: greeting.txt", 12.0),
+    DispatchRecord("Validation cycle 2", 0.0),
+]
+
+_FIXTURE_FUTURE_DRIFT = [
+    DispatchRecord("Implementation: greeting.txt", 30.2),
+    DispatchRecord("Validation", 22.6),
+    DispatchRecord("Validation cycle 2", 0.0),
+    DispatchRecord("Validation cycle 3", 0.0),
+]
+
+
+class TestDispatchCountAssertions:
+    """Exercise the per-stage count expressions used by `test_feedback_keepalive`.
+
+    The post-edit assertions are: exactly 1 record with `"implementation"` in
+    `ensign_name` (case-insensitive) and exactly 2 records with `"validation"`.
+    These cases prove the assertions pass against the legitimate contract,
+    catch the original bug on the impl-count axis, and surface future
+    validation-cycle drift on the validation-count axis.
+    """
+
+    def test_passes_against_current_contract(self):
+        """Legitimate 3-dispatch flow: impl==1 AND val==2."""
+        assert _impl_count(_FIXTURE_LEGIT) == 1
+        assert _val_count(_FIXTURE_LEGIT) == 2
+
+    def test_catches_original_bug_on_impl_count(self):
+        """Original bug 4-dispatch flow: the impl==1 check fails (counts 2)."""
+        assert _impl_count(_FIXTURE_ORIGINAL_BUG) != 1
+        assert _val_count(_FIXTURE_ORIGINAL_BUG) == 2
+
+    def test_surfaces_future_drift_on_validation_count(self):
+        """Future drift with a third legitimate validation cycle: the val==2 check fails (counts 3)."""
+        assert _impl_count(_FIXTURE_FUTURE_DRIFT) == 1
+        assert _val_count(_FIXTURE_FUTURE_DRIFT) != 2
 
 
 class TestAgentTargetsStage:
