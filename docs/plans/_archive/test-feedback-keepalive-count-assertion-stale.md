@@ -11,6 +11,7 @@ worktree:
 issue: "#209"
 mod-block: 
 pr: #210
+archived: 2026-05-15T04:37:40Z
 ---
 
 `tests/test_feedback_keepalive.py::test_feedback_keepalive` asserts the FO emits *exactly two* ensign `Agent()` dispatches under the feedback-keepalive flow. The current FO contract emits three because validation has `fresh: true`, forcing a fresh validation `Agent()` after the kept-alive implementer's fix lands.
