@@ -1,13 +1,13 @@
 ---
 id: na9ydw9h5cvey0qmqeb96te8
 title: test_feedback_keepalive dispatch-count assertion is stale under fresh validation
-status: validation
+status: done
 source: captain (CL) — observed on PR #208 cycle-3 live-CI (claude-live-opus job)
 started: 2026-05-12T18:47:19Z
-completed:
-verdict:
+completed: 2026-05-15T04:37:35Z
+verdict: PASSED
 score:
-worktree: .worktrees/spacedock-ensign-test-feedback-keepalive-count-assertion-stale
+worktree: 
 issue: "#209"
 mod-block: 
 pr: #210
