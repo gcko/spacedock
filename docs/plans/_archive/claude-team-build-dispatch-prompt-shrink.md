@@ -10,6 +10,7 @@ score:
 worktree: 
 issue: "#229"
 pr:
+archived: 2026-05-20T22:27:07Z
 ---
 
 ## Problem
