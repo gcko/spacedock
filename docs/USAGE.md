@@ -150,6 +150,15 @@ cd /path/to/spacedock
 
 Then start Codex with multi-agent support enabled, and install Spacedock from the repo-local marketplace entry. The catalog lives at `.agents/plugins/marketplace.json` and points at `./plugins/spacedock`, which is a checked-in symlink to the repository root so Codex loads the real plugin package directly. The authoritative plugin manifest is `.codex-plugin/plugin.json`. The exact Codex install command varies by version; see your Codex docs for the current plugin install path.
 
+Legacy fallback: older Codex setups that predate the repo-local marketplace can still expose Spacedock by manually symlinking the skills directory:
+
+```bash
+mkdir -p ~/.agents/skills
+ln -s /path/to/spacedock/skills ~/.agents/skills/spacedock
+```
+
+The `.claude-plugin/plugin.json` and `.claude-plugin/marketplace.json` files remain as synchronized legacy mirrors of the Codex-first metadata for migration compatibility.
+
 Once installed, prompt Codex to use the first-officer skill:
 
 ```
