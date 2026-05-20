@@ -216,6 +216,19 @@ Captain approved cycle 2 and chose to route a quick hygiene pass back as cycle 3
 
 Polish-tier (also do these while you're in there if cheap; absorb into implementation if not): rephrase AC-3 to specify structural requirements ("the explanatory paragraph enumerates the four omissions; mentions the Skill-directive reliance") instead of asserting a literal draft sentence at line 123 of the runtime adapter — coupling the test to draft wording is brittle. Split the 7-line Failsafe acknowledgment paragraph at entity line 122 into two sentences for readability.
 
+#### Cycle 3 — captain rejected at implementation gate; restructuring scope (2026-05-20)
+
+Cycle-3 ideation hygiene pass landed clean, FO advanced to implementation gate. At that gate the captain pushed back: the cycle-2 design's ~990 char savings is too small a target. Real-prompt measurement (saved at `/tmp/dispatch-4q9-prompt.txt`) showed the bulk of the prompt is per-dispatch content the FO already authors plus three large inlined-but-fetchable blocks — stage definition (2639 chars, 30.8%), standing teammates section (1699 chars, 19.9%), and boot directive (460 chars, 5.4%). Per-dispatch FO context burn is ~17,500 chars total of which ~12,700 chars carries content the FO never uses for its own reasoning. The cycle-1/2/3 design was the wrong target by an order of magnitude.
+
+Captain's reframe: have `claude-team build` emit fetch commands (sed-style line-range invocations) the ensign runs on first action instead of inlining content. Saves prompt size for the ensign AND saves FO context (helper output + Agent prompt args = 3x cost). The cycle-2 design's correctness work (breakglass-template fix + structural-marker test idea) is sound but orthogonal to the bigger restructure.
+
+Entity 4q9 is rejected and replaced by two successor entities:
+
+- **`0x93enxe1hpmk95a25476zyn`** (claude-team-build-fetch-on-demand-dispatch-spec) — the bigger restructure. Ideation will include an actual spike to prove fetch-on-demand works before locking the design.
+- **`2x6ra77h668vwr3gxc7zh80f`** (fo-breakglass-template-skill-invoke-directive) — small standalone carve-out of the one cycle-2 finding orthogonal to the restructure. If the bigger restructure absorbs it, this entity gets rejected without code change.
+
+Cycle 1-3 work is preserved in git history (`ccd84011`, `ccb442d5`, `cb4bef12`) as the scoping that surfaced the wrong target.
+
 ## Stage Report: ideation (cycle 2)
 
 - DONE: Engage with `_archive/claude-team-inject-skill-invoke.md` on the `### Summary` line (row 7b → row 8b). Reclassify or argue with evidence.
