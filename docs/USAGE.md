@@ -1,0 +1,151 @@
+# How Spacedock works
+
+Spacedock has three roles. The Captain is you. The First Officer is the orchestrator agent that reads the workflow and decides what to do next. The Ensign is a worker agent dispatched to move a single work item through one stage. The basic loop is simple: the First Officer reads the workflow, dispatches Ensigns to advance work items, and pauses at gates to ask the Captain for a call.
+
+## When Spacedock helps and when it does not
+
+Spacedock is a batch and approval layer that sits on top of skills. It does not replace skills. It pays off when work has natural pause points where you would want to glance at output before letting an agent move on, when work spans sessions so you come back tomorrow to the same item, or when you would otherwise re-run the same skill manually several times against your own output (the antagonistic re-review pattern).
+
+For one-shots, keep using ordinary skills. Looking up a Slack thread, creating a worktree, managing plugins, running `/clear` between thoughts: none of these need a workflow. Reach for Spacedock when there is a stream of similar work items moving through the same shape, or when a single item has enough phases that you want a record of what happened at each one.
+
+## Vocabulary
+
+| Concept | Plain English |
+|---------|---------------|
+| Mission | The purpose of the workflow: what it processes and what it delivers. |
+| Work item | A single markdown file representing one thing being worked on (an email batch, a trip, a ticket, a draft). |
+| Workflow | A directory of work items plus a README that defines stages, schema, and gates. |
+| Stage | A named step a work item passes through (intake, design, review, etc.). |
+| Gate | A pause point at a stage boundary where the Captain approves, redirects, or rejects. |
+
+| Role | Who |
+|------|-----|
+| Captain | You. Defines the mission and makes the calls at approval gates. |
+| First Officer | Orchestrator agent. Reads the workflow, dispatches Ensigns, surfaces gates. |
+| Ensign | Worker agent. Moves a single work item through one stage. |
+
+## The work-item file
+
+A work-item file is markdown with YAML frontmatter. Here is a concrete example:
+
+```yaml
+---
+id: 054
+title: Session debrief command
+status: design
+worktree:
+pr:
+verdict:
+---
+
+## Context
+Background, links, what brought this in.
+
+## Design
+Sketched approach, alternatives considered, the choice.
+
+## Acceptance criteria
+- What "done" looks like.
+- What must NOT regress.
+
+## Captain feedback
+(filled in when a gate rejects and bounces back)
+
+## Stage reports
+(Ensigns append their work summaries here as the item moves through stages)
+```
+
+The `status` field drives the stage. The First Officer reads it to know what to dispatch next and which gate, if any, applies.
+
+The body grows as the item moves through stages. Each Ensign appends to it. Nothing is lost across sessions because the file holds the state, not the agent's memory.
+
+## Stages and the YAML schema
+
+Each workflow's `README.md` has a YAML block defining stages. Here is a representative block:
+
+```yaml
+stages:
+  defaults:
+    worktree: false
+    concurrency: 2
+  states:
+    - name: backlog
+      initial: true
+    - name: design
+      gate: true
+    - name: implementation
+      worktree: true
+      concurrency: 1
+    - name: validation
+      worktree: true
+      fresh: true
+      feedback-to: implementation
+    - name: ship
+      parked: true
+    - name: done
+      terminal: true
+```
+
+| Flag | What it does |
+|------|--------------|
+| `initial: true` | Where new work items land when created. |
+| `gate: true` | First Officer pauses and asks the Captain to approve or reject before advancing. |
+| `worktree: true` | Stage runs inside an isolated git worktree. |
+| `concurrency: N` | Maximum work items in this stage at the same time. |
+| `fresh: true` | Dispatches a brand-new Ensign with no prior session context (the manual `/clear` between phases). |
+| `feedback-to: <stage>` | On rejection, status snaps back to that stage with the Captain's feedback baked in. |
+| `parked: true` | Stage waits on an external signal (PR merge, reply, time) instead of auto-advancing. |
+| `terminal: true` | End of the workflow. |
+
+The YAML is the artifact. The commission mission string is the spec. Running `/spacedock:commission` writes the YAML from the mission. If commission gets a flag wrong, edit the YAML by hand. The First Officer reads it on every loop and needs no restart.
+
+## Approval gates and adversarial review
+
+Gates are not rubber-stamps. When a stage has `gate: true`, the First Officer pauses, presents the Ensign's stage report (findings, verdicts, artifacts, anomalies), and asks the Captain to approve, redirect, or reject. Approval moves the item forward. Rejection bounces it back to the stage named in `feedback-to:` with the Captain's one-line feedback included in the next Ensign's prompt.
+
+Adversarial review is a stage configured to push back instead of confirm. Combine `gate: true`, `fresh: true`, and `feedback-to:` on a review stage. A clean Ensign reads the diff cold, the Captain can challenge thin evidence, and rejection re-dispatches with a stronger frame. In practice this collapses what used to be five rounds of re-running a review skill with progressively stronger language into one stage with three flags.
+
+## Refit and iteration
+
+Workflows are not write-once. Run a workflow for two weeks. Note which stages never fire and which gates keep bouncing the same kind of issue back. Then either edit the README YAML by hand or run `/spacedock:refit` for a guided pass.
+
+A few tips:
+
+- Use `gate: true` sparingly. Only at decision points where the agent has actually been wrong (verdicts, classifications, scope), not for things you would rubber-stamp.
+- Keep stage names as buckets, not verbs. Good: `review`, `validation`, `merged`. Not good: `reviewing_now`, `awaiting_validation`.
+- Four to six stages per workflow is the sweet spot. TDD does not need to be split into red, green, refactor stages. A single `implement` stage is fine.
+
+## Sessions, debrief, and context limits
+
+State lives in the work-item markdown files, not in the Ensign's session. When an Ensign runs out of context, Spacedock dispatches a successor that picks up from the file.
+
+At the end of a working session, run `/spacedock:debrief` to record what happened: commits, status changes, decisions, open issues. The next session reads the debrief and continues from there.
+
+Sessions are not the unit of work. The work item is. You can come back next week and the workflow still knows what is in flight.
+
+## Mods at a glance
+
+Mods are markdown files in `{workflow-dir}/_mods/` that declare hook handlers for lifecycle events like startup, idle, or merge. The canonical example is `mods/pr-merge.md`, which opens a pull request automatically when a completed worktree branch is ready to land. Mods extend a workflow without changing the core. Heads up: `/spacedock:commission` cannot scaffold new mods. It only copies pre-shipped mods from the plugin into `{workflow-dir}/_mods/`. Custom mods (Linear sync, GitHub PR intake, and so on) are authored by hand. See the PR review queue and Linear ticket ship examples in `EXAMPLES.md` for the patterns.
+
+## Codex CLI
+
+Spacedock works in Codex CLI through the multi-agent path, which is currently experimental. The Claude Code path is the primary supported surface.
+
+```bash
+git clone https://github.com/clkao/spacedock.git /path/to/spacedock
+cd /path/to/spacedock
+```
+
+In Codex, open `/plugins` and install Spacedock from the repo-local marketplace entry at `.agents/plugins/marketplace.json`. The exact install command pair varies by Codex version; see `docs/plans/codex-marketplace-root-source.md` for the current steps and `.codex-plugin/plugin.json` for the authoritative plugin manifest.
+
+Once installed, prompt Codex to use the first-officer skill:
+
+```
+Use the spacedock:first-officer skill to run /spacedock:commission <your mission prompt> in this directory.
+```
+
+## Running Spacedock safely
+
+- Run Spacedock inside a sandbox. Recommended options: `agent-safehouse` (macOS), `packnplay`, a devcontainer, or a VM.
+- Approve at gates with care. Approval is the signal Spacedock uses to advance and it cannot recover gracefully from approval given in error.
+- Run `git status` before approving a stage that ran in a worktree if you suspect uncommitted local changes.
