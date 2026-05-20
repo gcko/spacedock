@@ -155,3 +155,19 @@ Estimated complexity: small. ~50 lines of Python touched in `claude-team` (strin
 ### Summary
 
 Ideation reframed the proposal in light of CL's backlog-gate correction: the ~7000→~500 target is unreachable because the per-dispatch content (stage definition, checklist, standing teammates) is the bulk of the prompt and must stay. The realistic shrink drops four pure-boilerplate blocks (Read-instruction prose, Summary template line, Stage Report appending instructions, Completion-Signal surrounding prose) for roughly 1100-1300 chars saved per dispatch. Breakglass FO template is pulled into scope and gains a `Skill(skill="spacedock:ensign")` first-action directive it was previously missing. Skill-load-failure failsafe is argued as acceptable structural-not-destructive degradation — no new boot mechanism needed.
+
+### Feedback Cycles
+
+#### Cycle 1 — rejected at ideation gate (2026-05-20)
+
+Staff reviewer surfaced 7 material findings undermining the soundness of cycle-1 ideation. Rerouted to the same ensign via SendMessage (reuse OK: 5.9% of 1M context budget). Findings to address in cycle 2:
+
+1. **Prior-art collision on `### Summary` line (row 7b).** `_archive/claude-team-inject-skill-invoke.md` lines 76/101/115 classified the Summary line as KEEP ("legitimately per-dispatch scaffolding"). Cycle 1 drops it without engaging the prior reasoning. Either cite evidence the prior keep-decision was wrong, or reclassify 7b as KEEP.
+2. **Failsafe argument inverts the safety contract.** The prose warning proposed for move into `claude-ensign-runtime.md` exists because paraphrase risk was observed in haiku — but the skill, by definition, doesn't load in the failure mode the safeguard protects against. Putting the safeguard into the unloaded place is backwards. Either weaken the failsafe claim or scope-out the Completion-Signal-prose drop.
+3. **3 of 5 AC are stage-imperative ("emit", "continues to emit", "shrinks by ... vs baseline") rather than entity-level end-state.** Per the README's explicit AC guidance, rephrase as end-state properties of the finished entity ("the helper output for a representative dispatch lacks the four enumerated blocks," "the helper output is at least 1000 chars shorter than the captured baseline golden file," etc.).
+4. **AC-5 baseline is movable.** "Calibrated in implementation" + "captured at implementation start" makes the threshold self-fulfilling. Pin the baseline as a golden file checked in before implementation, or drop AC-5 and let AC-1's structural assertions carry the load.
+5. **AC-4 test (static grep on `claude-ensign-runtime.md`) proves content moved but not that the load-path delivers it.** The failsafe depends on skill load. Either name an existing E2E assertion that catches a missing skill load of the moved phrases, or add one.
+6. **AC-1 test is a regression-fingerprint, not a structural check.** Four exact substrings would pass if a future author re-inlines different boilerplate covering the same semantics. Add a structural marker (e.g., assert no line starts with `### Stage report`).
+7. **Breakglass scope-in introduces a coordination dependency not enumerated.** Adding `Skill(skill="spacedock:ensign")` to the FO breakglass template is a behavioral change, not just a consistency edit. The "verify it's preserved" prose at entity line 121 hand-waves it — actually verify and name any downstream prose the change makes stale.
+
+Polish-tier findings (non-blocking but worth fixing): arithmetic reconciliation (~6900 baseline − ~4660 kept-content claim ≠ ~1200 saved claim); two off-by-small line citations (`ensign-shared-core.md:15-17` should be 16; `claude-team:368-379` should be 369-379); entity table row labels don't align with source `prompt_parts` comment numbers; "~50 lines" + "9 prompt_parts blocks" inconsistency (table has 11).
