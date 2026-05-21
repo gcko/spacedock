@@ -97,3 +97,110 @@ End-state properties of the finished entity. Each verifiable by a future reader.
 - Related: `_archive/haiku-bare-fo-guardrail-weaknesses.md` (#200, original Pattern A documentation), GitHub issue #219 (Bash wedge — different surface).
 - Cost: spike ~$10-15, implementation review ~$1, validation ~$5. Total ~$20.
 - Wall time: spike ~25 min, implementation ~30 min, validation ~25 min.
+
+## Empirical findings
+
+### Spike report (ideation cycle 1)
+
+5 runs of `pytest tests/test_gate_guardrail.py --runtime claude --model sonnet --team-mode bare --effort low` from spacedock repo root, with `CLAUDECODE` and `CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS` unset. Harness: `/tmp/2yd-spike/run-spike.sh baseline` (adapted from `/tmp/nwq-spike/`). Artifacts under `/tmp/2yd-spike/baseline/run{1..5}/`. Token: live (post-2026-05-21 swap of `~/.claude/benchmark-token`).
+
+| Run | Test result | First Bash | FO cwd discipline | bash_count | cd $HOME drift |
+|-----|-------------|------------|-------------------|------------|----------------|
+| 1   | PASSED (83.5s) | `echo $CLAUDECODE` | inside `spacedock-test-w5y2t998/test-project` | 8  | no |
+| 2   | PASSED (79.7s) | `echo "CLAUDECODE: ${CLAUDECODE:-not set}" && echo "CODEX_HOME: ${CODEX_HOME:-not set}"` | inside test project | 10 | no |
+| 3   | PASSED (75.7s) | `echo "CLAUDECODE=$CLAUDECODE"` | inside test project | 9  | no |
+| 4   | PASSED (73.2s) | `echo "CLAUDECODE=${CLAUDECODE:-not set}"; echo "CODEX_HOME=${CODEX_HOME:-not set}"` | inside test project | 10 | no |
+| 5   | PASSED (76.8s) | `git rev-parse --show-toplevel 2>/dev/null && echo "---" && CLAUDECODE=1 ...` | inside test project | 9  | no |
+
+**Verdict: PASS** (5/5, exceeds AC-1's ≥4/5 PASS threshold). No protocol-adherence flakes: zero `cd $HOME` / `cd ~` drift, zero gate self-approve (gate-test-entity remains in `intake` per the test's design), zero early-terminate. Sonnet's first Bash is a CLAUDECODE/CODEX_HOME env probe (not the `status` command haiku's prose discipline targets) — different shape, but not a protocol-adherence concern because sonnet doesn't exhibit the cwd-drift failure mode the `status` prose was designed to prevent.
+
+**Cost: $3.26 total** across 5 runs (under the $10-15 budget; ~$0.65/run). Spike wall time ~7 min (parallel-friendly per-run ~80s).
+
+**What this confirms for AC-1:** sonnet clears the bare-mode protocol-adherence bar that haiku flakes on. Proceed with the matrix change.
+
+**What this does NOT confirm:** that CI-shape invocation (clean-home env via `make test-live-claude-bare`, no `SPACEDOCK_TEST_TMP_ROOT` override) passes equivalently. That's the validation-stage gate (AC-6); see Risk-B below for the explicit CI-shape requirement.
+
+## Territory corrections (ideation cycle 1)
+
+The intake's "Proposed approach" §2 named `.github/workflows/runtime-live-e2e.yml`'s `claude-live-bare` job as the YAML edit location. Inspection of the workflow file shows this is incorrect:
+
+- **Workflow `runtime-live-e2e.yml` does NOT hardcode `--model haiku` anywhere.** The `claude-live-bare` job (line 239) and `claude-live` job (line ~118) both follow the same pattern: when `MODEL_OVERRIDE` is set, pass it to pytest (line 375 for bare); when unset, fall through to `make test-live-claude-bare` (line 380) which inherits pytest's default. The only "haiku" string in either job is the **informational** "Effective model" summary display at lines 347 and 195 — `EFFECTIVE_MODEL="(pytest default — haiku)"`.
+- **The "haiku default" actually lives in `tests/conftest.py:25`:** `parser.addoption("--model", action="store", default="haiku", ...)`. This default applies to ALL live tests, not just bare-mode, so changing it would also affect `test-live-claude` (teams-mode CI) — out of scope.
+- **The minimal-surgery change for bare-mode-only is in the Makefile.** Add an explicit `--model` flag to `test-live-claude-bare` (Makefile lines 58-66) so the bare target overrides the pytest default while leaving the teams target on haiku.
+
+### Confirmed change locations
+
+1. **`Makefile` lines 9 and 58-66 (`test-live-claude-bare` target):** introduce a `BARE_MODEL ?= sonnet` variable near `OPUS_MODEL ?= opus` at line 9, then add `--model $(BARE_MODEL)` to both pytest invocations inside `test-live-claude-bare`. This is the load-bearing change — overrides the conftest default for bare-mode-only without touching teams-mode.
+2. **`.github/workflows/runtime-live-e2e.yml` lines 347 and 358 (`claude-live-bare` job's "Show tool versions" step):** update the display string from `EFFECTIVE_MODEL="(pytest default — haiku)"` to `EFFECTIVE_MODEL="(make default — sonnet)"` so the CI summary accurately reflects the new effective model. This is a display-only fix, not a behavioral change.
+3. **Top-level reference for the supported-models declaration:** the README.md (see Risk-A below for placement justification).
+
+### Acceptance-criteria adjustments implied by the territory correction
+
+- **AC-2** (intake wording: "workflow file runs `--model sonnet` for the bare-mode invocation") — restated: assert the `claude-live-bare` job's "Show tool versions" step displays `sonnet` (not `haiku`) in its EFFECTIVE_MODEL string, AND assert `MODEL_OVERRIDE`-empty fall-through routes to `make test-live-claude-bare`. The latter is unchanged from current behavior, so the real test is the display string.
+- **AC-3** (Makefile: bare target accepts and defaults to sonnet) — accurate as stated; the test is `grep -E "BARE_MODEL.*=.*sonnet|model.*sonnet" Makefile` against the bare-mode target returns a match, AND `grep -E "model.*haiku" Makefile` against the bare target returns no matches.
+- **AC-2 and AC-3 lint shape: prefer parsing the YAML/Makefile structure over substring matching.** Substring grep on "haiku" would false-positive on any informational mention (e.g., the archived-reference link "see `_archive/haiku-bare-fo-startup-protocol-adherence.md`" which the README may legitimately contain). Scope the assertion to within the `claude-live-bare` job block (YAML) or `test-live-claude-bare` target body (Makefile).
+
+## Risks pinned in this entity
+
+### Risk A — Where the supported-models declaration lives (discoverability)
+
+**Decision: README.md `## Supported models` section, placed between `## Quick Start` and `## What a Work Item Looks Like`.**
+
+**Rationale.** Three candidate locations were considered:
+
+1. **`README.md` (chosen).** Users discover Spacedock via the repo landing page or `claude plugin install spacedock` flow; the README is the canonical capability contract surface. A new user about to commission a workflow scrolls past Quick Start and benefits from seeing the model floor before they invoke `claude --agent spacedock:first-officer "/commission ..."`. Placement between Quick Start (which shows commission examples) and "What a Work Item Looks Like" (which shows entity shape) puts the capability boundary at the natural read-point. The README is already 154 lines — a short ~10-line section does not dilute its signal-to-noise.
+
+2. **`references/code-project-guardrails.md` (rejected).** This file is FO/ensign-internal scaffolding (read by agents at runtime, not by users). It is loaded into agent context, not browsed by humans. A user-facing capability contract belongs where users look, not where agents pre-load. Cross-link from this file to the README is fine but the source-of-truth should be README.
+
+3. **`skills/commission/references/` (rejected).** The commission flow does load these references, but only after a user has already invoked `/commission` — too late for the user who's deciding whether Spacedock is the right tool for their model setup. Also, a per-skill reference makes the contract feel scoped to that skill rather than to Spacedock as a whole.
+
+**Draft section content** (~10 lines) for placement immediately above `## What a Work Item Looks Like`:
+
+```markdown
+## Supported models
+
+Spacedock's first officer drives a startup protocol (load operating-contract skills, read stage definitions, enforce gate semantics) that requires careful instruction-following. The supported floor for the **bare-mode** first officer is **Claude Sonnet or above**. Haiku has been empirically observed to flake below the protocol-adherence bar in bare mode (cwd drift, gate self-approve, early-terminate failure modes — see archived empirical evidence in `docs/plans/_archive/haiku-bare-fo-startup-protocol-adherence.md`).
+
+In **teams mode**, the first officer can run reliably on Haiku because the teams runtime provides extra protocol scaffolding (skill preloading, agent-discovery hooks). Ensigns may use any model the user chooses; the floor applies to the first officer role specifically.
+
+If you point Spacedock at a sub-floor model for the bare-mode first officer, expect intermittent stage-advancement failures and gate-state corruption. The Spacedock test matrix exercises `sonnet` for bare-mode and `haiku` for teams-mode.
+```
+
+**AC-4 update:** the supported-models section exists at the README top level (not at a sub-reference), declares "sonnet" (lowercase, matching pytest's alias resolution) as the bare-mode FO floor, names haiku as below-bar with a `_archive/haiku-bare-fo-startup-protocol-adherence.md` cross-reference, and explicitly carves out teams-mode and ensigns as not subject to the floor.
+
+### Risk B — Local-passes-but-CI-flakes (cross-cycle empirical pattern)
+
+**The risk.** This is exactly what bit the nwq cycle-4 spike: baseline production prose passed haiku-bare **5/5 locally** but the original CI flake history (#200 Pattern A) showed haiku failing under the clean-home CI invocation shape. The two invocations differ in:
+
+- **CI:** `make test-live-claude-bare` from a fresh GitHub-Actions Ubuntu runner with no project-local `.git`, no `~/.config`, no developer-set env vars beyond what the workflow exports.
+- **This spike:** `env -u CLAUDECODE uv run pytest tests/test_gate_guardrail.py --runtime claude --model sonnet --team-mode bare --effort low -v` from the macOS developer workstation with `SPACEDOCK_TEST_TMP_ROOT` set to `/tmp/2yd-spike/baseline/runN/`.
+
+Even if sonnet's spike result is PASS (5/5 PASSED, which it is), the same false-confidence pattern could repeat: sonnet local-passes via the spike-shape harness, then flakes once on CI under the clean-home shape, and the entity ships a fix that doesn't fix the actual CI flake.
+
+**Mitigation: tighten AC-6 to require the CI invocation shape, not the spike-shape.**
+
+**Current AC-6 wording:** "`make test-live-claude-bare` runs the gate-guardrail test on sonnet locally before PR open. Test: `make test-live-claude-bare TEST=test_gate_guardrail` exit code 0 with the bare-mode model verified as sonnet in fo-log.jsonl."
+
+**Tightened AC-6 wording (proposed):**
+
+> AC-6: **The validation stage runs the bare-mode gate-guardrail test via the production CI invocation shape on the worktree, not the spike harness, and the run passes with sonnet as the effective model.** Specifically:
+>
+> 1. Invocation: `make test-live-claude-bare` (no `TEST=` selector — let the Makefile target route through its full pytest invocation including the serial/parallel split). If wall-clock budget forbids the full suite, alternatively run `make test-live-claude-bare TEST=tests/test_gate_guardrail.py` — but the captain's preference is the unscoped run since "once we PR we'll know the rest" implies the validation stage is the last empirical check before CI.
+> 2. Environment: `CLAUDECODE` and `CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS` unset (the Makefile target does this); no `SPACEDOCK_TEST_TMP_ROOT` override (let the Makefile use its default `$TMPDIR` placement); no `KEEP_TEST_DIR=1` (we don't need the artifacts post-validation).
+> 3. Evidence: the worker's stage report cites the exit code, the wall-clock duration, and at least one `fo-log.jsonl` line confirming `claude-sonnet-4-6` (or whatever sonnet's alias resolves to) appears in the `modelUsage` entry — not `claude-haiku-4-5-*`.
+> 4. **Test:** `make test-live-claude-bare` exit code 0, plus a grep of any `fo-log.jsonl` under the spacedock-live tmpdir for `claude-sonnet-` returns a match and `claude-haiku-` returns no matches in the bare-job-touched paths.
+
+This tightening converts AC-6 from "any-shape local pass" to "production-shape local pass," catching the CI-flake regression risk before PR open.
+
+## Stage Report: ideation
+
+- DONE: Run the empirical spike that gates the design.
+  5 sonnet-bare runs of `test_gate_guardrail` PASSED 5/5 in 73-84s each; zero `cd $HOME` drift; total cost $3.26 (well under the $10-15 budget). Per-run table and verdict (PASS, exceeds AC-1's ≥4/5 threshold) in `## Empirical findings → ### Spike report`. Artifacts at `/tmp/2yd-spike/baseline/run{1..5}/`.
+- DONE: Confirm or tighten the design based on spike findings.
+  Spike verdict PASS, so design proceeded. Territory inspection corrected the intake's §2 claim: `runtime-live-e2e.yml` does NOT hardcode `--model haiku` in the bare job — the haiku default lives in `tests/conftest.py:25`. Confirmed change locations now cite (a) `Makefile` lines 9 and 58-66 (`test-live-claude-bare` target) as the load-bearing edit, (b) `runtime-live-e2e.yml` lines 347 and 358 as display-only fixes, (c) `README.md` as the supported-models declaration home. See `## Territory corrections`.
+- DONE: Address two risks specific to this entity and pin the answer in the entity body.
+  Risk A (declaration discoverability): README.md `## Supported models` section between `## Quick Start` and `## What a Work Item Looks Like` — chosen over `code-project-guardrails.md` (agent-internal) and commission-skill-references (only-after-commission). Justification + ~10-line draft prose in `## Risks pinned in this entity → ### Risk A`. Risk B (local-passes-but-CI-flakes): proposed AC-6 tightening from "any-shape local pass" to "production-shape local pass via `make test-live-claude-bare` with model verified in `fo-log.jsonl`'s `modelUsage`". Wording draft in `### Risk B`.
+
+### Summary
+
+The empirical spike (5/5 PASSED, $3.26 cost, all FO commands workspace-rooted with no cwd drift) clears AC-1 and gates the rest of the design. Territory inspection surfaced one intake error worth flagging at the gate: the YAML workflow does not hardcode haiku — the load-bearing change is in the Makefile, not the workflow. The two pinned risks (README placement for the user-facing capability contract; tighten AC-6 to require the production CI invocation shape so we don't repeat nwq cycle-4's local-pass/CI-flake false-confidence) are answered in dedicated entity-body sections so the captain can approve or redirect both at the gate.
