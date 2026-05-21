@@ -129,6 +129,20 @@ If the spike PASSES, a small follow-up entity would:
 
 If the spike FAILS (e.g., the ensign needs more context in the prompt to know what `DISPATCH_FILE` means before the skill loads), the fallback is to bake the `DISPATCH_FILE:` instruction into the agent definition (`agents/ensign.md`) so it's part of the spawn-phase context rather than requiring the model to interpret it from the prompt alone.
 
+### Empirical addendum (2026-05-21): `@`-include does NOT resolve in `Agent()` prompt args
+
+Captain asked: does the `@`-include syntax that works in skill bodies (Mechanism 2 above) also work when used in the `Agent()` tool's `prompt=` arg? If yes, the platform itself would handle the inlining and the proposed `DISPATCH_FILE:` convention below would be unnecessary — the FO could just emit `prompt="@/path/to/dispatch.md"` and Claude Code would substitute the file contents at spawn time.
+
+**Result: it does not work.** Empirical probe (single throwaway `Agent(subagent_type="general-purpose", prompt="@/tmp/at-include-probe/test-include.md...")` spawn): the spawned agent received the **literal string** `@/tmp/at-include-probe/test-include.md` with no expansion. The fixture file containing `MAGIC_INCLUDE_TOKEN_2026052100` was not visible to the agent's context.
+
+This means:
+
+- Claude Code's `@`-include feature is scoped to skill bodies (verified in production via Mechanism 2 above) and likely CLAUDE.md / interactive prompts (not tested here), but **NOT** `Agent()` tool prompt args.
+- The proposed `DISPATCH_FILE:` convention below remains necessary — there is no platform-level shortcut that lets the FO emit a tiny `@`-pointer and have the platform inline the content. The ensign must Read the file itself on first action.
+- Mechanism 1 (skills frontmatter preload) and Mechanism 2 (`@`-include in skill body) both ARE expansion-at-load. They're spawn-time platform features, but only apply to skill content, not arbitrary `Agent()` prompts.
+
+The proposal below is unchanged; this addendum just records the empirical answer to the captain's `@`-shortcut question.
+
 ### What this research does NOT settle
 
 - Whether Mechanism 3 (`Skill(skill=X, args=Y)`) can substitute `args` into the skill body at expansion time, or whether `args` is just a string the model reads after expansion. Read of the tool schema is consistent with both interpretations.
