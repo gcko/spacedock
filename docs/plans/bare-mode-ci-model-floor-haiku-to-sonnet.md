@@ -1,7 +1,7 @@
 ---
 id: 2ydg3csfyx22kt1qhgcphjm8
 title: "Raise supported-model floor for bare-mode FO CI from haiku to sonnet"
-status: implementation
+status: validation
 source: "Captain pivot at the cycle-5 gate of `nwwqsx5q` (haiku-bare-fo-startup-protocol-adherence, REJECTED, archived). Cycle-4 spike (14 runs, real API, full data) showed: baseline production prose passes haiku-bare 5/5 locally (#200 Pattern A doesn't reproduce off-CI), candidate prose tightening regresses haiku-bare pass rate from 5/5 to 3/5 (introduces over-approve + early-terminate failure modes), cross-check shows opus-bare 2/2 PASS and haiku-teams 2/2 PASS (candidate doesn't regress working modes). Honest conclusion: prose tightening alone can't lift haiku's protocol-adherence floor; sonnet sits between haiku and opus on capability and is the cheapest model empirically plausible to clear the bar. Captain (CL) chose option D — raise the model floor — over option B (retire bare-haiku coverage) on 2026-05-21."
 started: 2026-05-21T05:59:31Z
 completed:
@@ -9,7 +9,8 @@ verdict:
 score:
 worktree: .worktrees/spacedock-ensign-bare-mode-ci-model-floor-haiku-to-sonnet
 issue:
-pr: #233
+pr: "#233"
+mod-block: merge:pr-merge
 ---
 
 ## Problem
@@ -206,3 +207,35 @@ This tightening converts AC-6 from "any-shape local pass" to "production-shape l
 The empirical spike (5/5 PASSED, $3.26 cost, all FO commands workspace-rooted with no cwd drift) clears AC-1 and gates the rest of the design. Territory inspection surfaced one intake error worth flagging at the gate: the YAML workflow does not hardcode haiku — the load-bearing change is in the Makefile, not the workflow. The two pinned risks (README placement for the user-facing capability contract; tighten AC-6 to require the production CI invocation shape so we don't repeat nwq cycle-4's local-pass/CI-flake false-confidence) are answered in dedicated entity-body sections so the captain can approve or redirect both at the gate.
 
 **Post-spike captain update (in-cycle).** Captain (CL) lowered the AC-1 PASS threshold from ≥4/5 to 1/1 at the ideation gate. AC-1 wording was updated to reflect this; the 5-run sweep was already complete at the time of the threshold change and is retained as over-spec evidence (4 additional confirmations beyond the 1-run requirement, ~$2.60 of incremental cost). Steps 2 (territory corrections) and 3 (risks pinned) are unchanged.
+
+## Stage Report: implementation
+
+- DONE: Land the three changes specified in `## Territory corrections → ### Confirmed change locations`.
+  Single commit `cd2f9128` on `spacedock-ensign/bare-mode-ci-model-floor-haiku-to-sonnet`: (a) `Makefile` — `BARE_MODEL ?= sonnet` added next to `OPUS_MODEL ?= opus`; `--model $(BARE_MODEL)` added to both pytest invocations in `test-live-claude-bare`. (b) `.github/workflows/runtime-live-e2e.yml` — `EFFECTIVE_MODEL="(make default — sonnet)"` replaces the `(pytest default — haiku)` display string in the `claude-live-bare` job. (c) `README.md` — `## Supported models` section inserted between `## Quick Start` and `## What a Work Item Looks Like` with the ~10-line prose draft from `### Risk A`. Tightly coupled, hence one commit.
+- DONE: Add the static-content tests per AC-2 / AC-3 / AC-4 (parse-scoped, not substring).
+  Three tests appended to `tests/test_runtime_live_e2e_workflow.py` using the existing `section()` YAML helper and a new `_makefile_target_body()` make-target body helper: `test_runtime_live_e2e_bare_job_displays_sonnet_as_effective_model` (AC-2, scoped to `claude-live-bare` job block), `test_makefile_bare_target_pins_sonnet_and_drops_haiku` (AC-3, scoped to `test-live-claude-bare` target body), `test_top_readme_documents_supported_models_floor` (AC-4, scoped to the `## Supported models` README section). `make test-static` green: 629 passed, 27 deselected, 15 subtests passed in 29.32s.
+- DONE (after token refresh + re-run): Run `make test-live-claude-bare TEST=test_gate_guardrail` from the worktree per AC-6.
+  First attempt failed auth-class (401, not capability). Team-lead refreshed `~/.claude/benchmark-token` from the captain's macOS keychain and confirmed Hypothesis A (token expiry) was the cause; Hypothesis B (RTK sandbox boundary) ruled out by clean-home probe inside the same sandbox. Re-ran AC-6: **serial tier `tests/test_gate_guardrail.py::test_gate_guardrail PASSED in 45.09s` (1 passed, 4 skipped, 651 deselected); make wrapper exit 0** (parallel tier also clean — BG harness reports exit 0 = SEQ=0 && PAR=0). Wall-clock from BG start `08:13:08` to suite completion: ~8.5 min for the full `test-live-claude-bare` run (gate test alone was 45.09s; parallel tier carried the remaining ~7 min). Artifacts at `/tmp/2yd-impl-rerun2/spacedock-test-o_2klt_k/`. AC-6 sub-conditions: (a) exit code 0 ✓; (b) `fo-log.jsonl` init record shows `"model":"claude-sonnet-4-6"` and final result-line `modelUsage` shows `claude-sonnet-4-6` at 198K cache-read + 32K cache-create + 2050 output tokens / $0.21 — the FO loop ran on sonnet ✓; (c) one `claude-haiku-4-5-20251001` reference in the same `modelUsage` entry at 443 input / 12 output tokens / $0.0005 — this is Claude Code's harness sidekick-model spend, identical pattern to all 5 cycle-1 sonnet spike runs (which the captain approved with PASS verdict 5/5), so this matches the approved baseline rather than constituting an AC-6 violation. Run cost: $0.21 (well under the dispatch's $2-3 estimate).
+
+### Summary
+
+Implementation pass landed cleanly in one commit (`cd2f9128`): the load-bearing Makefile pin to `sonnet`, the YAML display-string fix, the README `## Supported models` section, and three parse-scoped static-content tests covering AC-2/AC-3/AC-4. `make test-static` green at 629 passed. AC-6 (the captain's cross-cycle live-test gate) initially auth-blocked (401, captain's pre-flagged risk hit), then re-run after team-lead refreshed the OAuth token: `test_gate_guardrail` PASSED in 45.09s with `claude-sonnet-4-6` running the FO loop (sonnet did 198K cache-read + 2050 output tokens at $0.21; one trivial `claude-haiku-4-5` sidekick call at $0.0005 matches the cycle-1 approved spike pattern exactly). Implementation report's AC-6 line updated from FAILED to DONE in-place per team-lead's instruction; full validation report already filed at `## Stage Report: validation`.
+
+## Stage Report: validation
+
+- DONE: AC-1 spike evidence cross-check.
+  Entity body `## Empirical findings → ### Spike report` shows 5/5 PASSED with per-run table (test result, first Bash, FO cwd, bash_count, cd $HOME drift). Verdict explicitly cites 1/1 captain-lowered threshold satisfied; artifacts at `/tmp/2yd-spike/baseline/run{1..5}/`. Cost $3.26.
+- DONE: AC-2 YAML display-string cross-check.
+  `.github/workflows/runtime-live-e2e.yml:347` reads `EFFECTIVE_MODEL="(make default — sonnet)"` inside the `claude-live-bare` job. `(pytest default — haiku)` no longer present in the bare job block.
+- DONE: AC-3 Makefile cross-check.
+  Makefile:10 defines `BARE_MODEL ?= sonnet` adjacent to `OPUS_MODEL ?= opus` (line 9). `test-live-claude-bare` target body (lines 59-67) carries `--model $(BARE_MODEL)` on both pytest invocations (serial line 62, parallel line 64). Zero `--model haiku` references in the target body.
+- DONE: AC-4 README section cross-check.
+  `## Supported models` section at README.md:82 sits between `## Quick Start` (line 21) and `## What a Work Item Looks Like` (line 90). Section contains `sonnet`, `bare-mode`, and `_archive/haiku-bare-fo-startup-protocol-adherence.md` substrings.
+- DONE: AC-5 static-content tests landed + `make test-static` green.
+  Three new tests in `tests/test_runtime_live_e2e_workflow.py` (parse-scoped per ideation cycle-1 territory correction): `test_runtime_live_e2e_bare_job_displays_sonnet_as_effective_model` (line 387, YAML block-scoped via `section()`), `test_makefile_bare_target_pins_sonnet_and_drops_haiku` (line 399, Makefile target-body-scoped via `_makefile_target_body()`), `test_top_readme_documents_supported_models_floor` (line 411, README section-scoped via heading-bracketed slice). `make test-static` from worktree: **629 passed, 27 deselected, 15 subtests passed in 29.39s** — +3 above the 626 baseline cited in the implementation report, matching the new test count exactly.
+- SKIPPED: AC-6 live-test gate.
+  Waived per captain decision (dispatch verbatim: "AC-6 live test waived locally; defer to CI"). Cycle-1 ideation spike provided 5/5 PASSED on the same `test_gate_guardrail` test under sonnet-bare (`/tmp/2yd-spike/baseline/run{1..5}/` artifacts, $3.26). Implementation run's `fo-log.jsonl` `modelUsage` independently confirmed `claude-sonnet-4-6` as the effective model from `make test-live-claude-bare TEST=test_gate_guardrail`; the run's exit-non-zero was a clean-home OAuth 401, not a code/test issue. CI on the PR will exercise `test_gate_guardrail` under the new Makefile path automatically. Captain's framing: "once we PR we'll know the rest."
+
+### Summary
+
+All static cross-checks (AC-1 spike evidence, AC-2 YAML display, AC-3 Makefile pin, AC-4 README section, AC-5 `make test-static`) pass cleanly on the worktree branch. The implementation commits (`cd2f9128` + `b52494ac`) plus the advance commit (`7a5f27fc`) land the load-bearing changes with parse-scoped tests guarding regression. AC-6 is waived per captain decision with the cycle-1 spike (5/5 PASSED) and implementation `modelUsage` proof (`claude-sonnet-4-6`) standing in as the empirical evidence; the PR's CI run is the final gate. Recommend **PASSED**.
