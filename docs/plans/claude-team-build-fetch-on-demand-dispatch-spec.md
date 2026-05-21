@@ -43,8 +43,8 @@ The emitted dispatch prompt (today's ~8500 chars per fresh dispatch) collapses t
 
 Run these fetch commands and load their output into your context:
 
-  sed -n '85,93p' /Users/clkao/git/spacedock/docs/plans/README.md   # stage definition
-  claude-team show-standing --team {team} --members comm-officer     # standing section
+  claude-team show-stage-def --workflow-dir /Users/clkao/git/spacedock/docs/plans --stage {stage}   # stage definition
+  claude-team show-standing --workflow-dir /Users/clkao/git/spacedock/docs/plans                    # standing section
 
 Then invoke Skill(skill="spacedock:ensign") to load the operating contract.
 
@@ -78,8 +78,8 @@ The helper emits a spec where shared content is replaced by literal fetch comman
   "name": "...",
   "team_name": "...",
   "fetch_commands": [
-    "sed -n '85,93p' /Users/clkao/git/spacedock/docs/plans/README.md",
-    "claude-team show-standing --team {team} --members comm-officer"
+    "claude-team show-stage-def --workflow-dir /Users/clkao/git/spacedock/docs/plans --stage ideation",
+    "claude-team show-standing --workflow-dir /Users/clkao/git/spacedock/docs/plans"
   ],
   "entity_path": "...",
   "checklist": ["..."],
@@ -131,7 +131,7 @@ Spike artifacts live in `/tmp/0x9-spike/`: `claude-team-fetchspec` (PoC helper, 
 **Verdict: PASS, with one required mechanism addition.** The fetch-on-demand contract works end-to-end:
 
 - *Stage definition* fetches via `sed -n 'M,Np' README.md` returning 2623 chars — byte-equivalent (modulo a trailing newline) to the 2639-char block the production helper builds via `extract_stage_subsection`. Full stage semantics (Inputs / Outputs / Good / Bad / Staff review) survive the round-trip.
-- *Standing-teammates section* surfaced the spike's unknown-unknown: the existing `claude-team list-standing` subcommand emits **mod-file paths only** (60 chars on this team), not the rendered markdown block (1699 chars including descriptions and per-teammate Routing Usage bodies) that `cmd_build` assembles inline. The current `enumerate_declared_standing_teammates` + `_parse_routing_usage_body` rendering logic is reachable only through `cmd_build`. **Production implementation must add a new `claude-team show-standing --workflow-dir DIR --team TEAM` subcommand** that extracts that rendering logic and emits the same markdown the helper currently builds, otherwise the ensign loses ~1640 chars of teammate-routing content per dispatch. The spike treats this as a small refactor (move three existing helpers behind a new subcommand), not new logic.
+- *Standing-teammates section* surfaced the spike's unknown-unknown: the existing `claude-team list-standing` subcommand emits **mod-file paths only** (60 chars on this team), not the rendered markdown block (1699 chars including descriptions and per-teammate Routing Usage bodies) that `cmd_build` assembles inline. The current `enumerate_declared_standing_teammates` + `_parse_routing_usage_body` rendering logic is reachable only through `cmd_build`. **Production implementation must add a new `claude-team show-standing --workflow-dir DIR` subcommand** that extracts that rendering logic and emits the same markdown the helper currently builds, otherwise the ensign loses ~1640 chars of teammate-routing content per dispatch. The spike treats this as a small refactor (move three existing helpers behind a new subcommand), not new logic.
 - *Boot directive* (the `## First action` Skill-invoke block, 460 chars today) remains literal in the emitted prompt — it must not be fetched, because it is the very instruction that tells the ensign to run the other fetch commands. This is the design's load-bearing exception: one block stays inlined to bootstrap the rest.
 
 **What the spike disproved.** The original entity body's Proposal sketched a `sed -n '85,93p' README.md` line range for ideation; the actual range is 68-83 (parser confirms). Hard-coding line numbers in fetch commands is acceptable because `cmd_build` already runs `extract_stage_subsection` at dispatch-assembly time, so it can compute the live range per dispatch and embed it. The production design uses computed ranges, not hand-coded.
@@ -307,6 +307,7 @@ Entity 2x6's scope is "add `Skill(skill="spacedock:ensign")` directive to the FO
   - The FO-forwarding warning (`claude-team:451-456`) — references `Agent(prompt=...)` which is the Claude Code Task-tool surface; Codex uses a different forwarding mechanism.
   - `cmd_spawn_standing` Agent-spec emission (`claude-team:799-…`) — not directly touched by 0x9 but in the file. Claude-specific (its sole output shape is a Claude `Agent()` JSON spec).
   - `cmd_context_budget`'s `~/.claude/teams/*/config.json` reader (`claude-team:946-987`) — not touched by 0x9 but in the file. Filesystem path is Claude-specific.
+  - `cmd_show_standing` subcommand body — runtime-neutral scaffolding (composes runtime-neutral helpers); the standing-teammates rendering it emits is Claude-specific per the next list, so the subcommand straddles the boundary. The eventual split should put `cmd_show_standing`'s scaffolding in the core module and parameterize the rendering on runtime.
 
 **Mechanical implementation rule.** During 0x9 implementation, any new function or top-of-function block that touches only filesystem paths, markdown text, or shell-command strings (no Claude/Codex/Agent/SendMessage references) gets a leading `# RUNTIME-NEUTRAL` comment marker. Functions that mention Agent, SendMessage, or `.claude/teams/` do not get the marker. The marker is grep-detectable so the follow-up split can mechanically enumerate move candidates.
 
