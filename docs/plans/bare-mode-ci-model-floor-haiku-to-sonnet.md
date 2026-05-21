@@ -55,8 +55,8 @@ This is the explicit capability contract the entity establishes.
 
 End-state properties of the finished entity. Each verifiable by a future reader.
 
-1. **The spike report in the entity body documents 5 sonnet bare-mode runs of `test_gate_guardrail`** with the three observables (first-Bash-is-status, test pass/fail, FO cwd) per run, plus a named verdict (PASS / INCONCLUSIVE / FAIL). PASS criterion: ≥4/5 pass with no protocol-adherence flakes.
-   - **Test:** entity body's `### Spike report` subsection contains the table; reviewer cross-checks against `/tmp/2yd-spike/baseline/run*/spacedock-test-*/fo-log.jsonl` artifacts.
+1. **The spike report in the entity body documents at least 1 sonnet bare-mode run of `test_gate_guardrail`** with the three observables (first-Bash call shape, test pass/fail, FO cwd) per run, plus a named verdict (PASS / INCONCLUSIVE / FAIL). PASS criterion: 1/1 pass with no protocol-adherence flake (no `cd $HOME` freelance, no gate self-approve, no early termination). Captain (CL) lowered the threshold from ≥4/5 to 1/1 at the ideation gate (2026-05-21): the prior nwq cycle-4/5 spikes already established the haiku-vs-opus capability gap empirically, so a single sonnet observation between those tiers is sufficient signal; cascade verification happens on the PR. The ideation cycle-1 spike opportunistically ran 5 runs before the threshold change and documents 5/5 PASS — over-spec but retained as additional evidence.
+   - **Test:** entity body's `### Spike report` subsection contains at least one row; reviewer cross-checks against `/tmp/2yd-spike/baseline/run*/spacedock-test-*/fo-log.jsonl` artifacts.
 
 2. **`.github/workflows/runtime-live-e2e.yml` `claude-live-bare` job runs `--model sonnet` (not `--model haiku`)** for the bare-mode FO invocation. (Only fires if AC-1 verdict is PASS.)
    - **Test:** static lint — grep the workflow file for the bare-mode job's model parameter. If `haiku` appears in that job's model arg, fail.
@@ -112,7 +112,7 @@ End-state properties of the finished entity. Each verifiable by a future reader.
 | 4   | PASSED (73.2s) | `echo "CLAUDECODE=${CLAUDECODE:-not set}"; echo "CODEX_HOME=${CODEX_HOME:-not set}"` | inside test project | 10 | no |
 | 5   | PASSED (76.8s) | `git rev-parse --show-toplevel 2>/dev/null && echo "---" && CLAUDECODE=1 ...` | inside test project | 9  | no |
 
-**Verdict: PASS** (5/5, exceeds AC-1's ≥4/5 PASS threshold). No protocol-adherence flakes: zero `cd $HOME` / `cd ~` drift, zero gate self-approve (gate-test-entity remains in `intake` per the test's design), zero early-terminate. Sonnet's first Bash is a CLAUDECODE/CODEX_HOME env probe (not the `status` command haiku's prose discipline targets) — different shape, but not a protocol-adherence concern because sonnet doesn't exhibit the cwd-drift failure mode the `status` prose was designed to prevent.
+**Verdict: PASS** (5/5; meets AC-1's 1/1-PASS threshold with 4 additional confirmations). No protocol-adherence flakes: zero `cd $HOME` / `cd ~` drift, zero gate self-approve (gate-test-entity remains in `intake` per the test's design), zero early-terminate. Sonnet's first Bash is a CLAUDECODE/CODEX_HOME env probe (not the `status` command haiku's prose discipline targets) — different shape, but not a protocol-adherence concern because sonnet doesn't exhibit the cwd-drift failure mode the `status` prose was designed to prevent. Captain lowered the threshold from ≥4/5 to 1/1 at the ideation gate; the 5-run sweep was already in flight when the update arrived and ran to completion at trivial extra cost (~$3 vs ~$0.65 for a single run), so the over-spec evidence is retained.
 
 **Cost: $3.26 total** across 5 runs (under the $10-15 budget; ~$0.65/run). Spike wall time ~7 min (parallel-friendly per-run ~80s).
 
@@ -204,3 +204,5 @@ This tightening converts AC-6 from "any-shape local pass" to "production-shape l
 ### Summary
 
 The empirical spike (5/5 PASSED, $3.26 cost, all FO commands workspace-rooted with no cwd drift) clears AC-1 and gates the rest of the design. Territory inspection surfaced one intake error worth flagging at the gate: the YAML workflow does not hardcode haiku — the load-bearing change is in the Makefile, not the workflow. The two pinned risks (README placement for the user-facing capability contract; tighten AC-6 to require the production CI invocation shape so we don't repeat nwq cycle-4's local-pass/CI-flake false-confidence) are answered in dedicated entity-body sections so the captain can approve or redirect both at the gate.
+
+**Post-spike captain update (in-cycle).** Captain (CL) lowered the AC-1 PASS threshold from ≥4/5 to 1/1 at the ideation gate. AC-1 wording was updated to reflect this; the 5-run sweep was already complete at the time of the threshold change and is retained as over-spec evidence (4 additional confirmations beyond the 1-run requirement, ~$2.60 of incremental cost). Steps 2 (territory corrections) and 3 (risks pinned) are unchanged.
