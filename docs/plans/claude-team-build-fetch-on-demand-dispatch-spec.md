@@ -9,7 +9,7 @@ verdict:
 score:
 worktree: .worktrees/spacedock-ensign-claude-team-build-fetch-on-demand-dispatch-spec
 issue: "#229"
-pr:
+pr: #231
 ---
 
 ## Problem
