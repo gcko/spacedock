@@ -1,16 +1,24 @@
 ---
 id: 2x6ra77h668vwr3gxc7zh80f
 title: "FO break-glass manual dispatch template adds Skill(skill=\"spacedock:ensign\") first-action directive"
-status: backlog
+status: done
 source: "carved out of 4q9 (claude-team-build-dispatch-prompt-shrink) cycle-2 ideation — the breakglass-template inconsistency surfaced there is orthogonal to the bigger fetch-on-demand restructure (0x9). Filed standalone so it can land independently; if 0x9 lands first and supersedes this, it can be closed without code change."
 started:
-completed:
-verdict:
+completed: 2026-05-21T05:02:00Z
+verdict: REJECTED
 score:
 worktree:
 issue:
 pr:
 ---
+
+## Status: superseded by 0x9 (PR #231 merged 2026-05-21)
+
+Entity `0x9` (`claude-team-build-fetch-on-demand-dispatch-spec`, PR #231, merged at commit `d4c1ba3e`) absorbed the breakglass-template Skill-invoke edit in the same PR. See the archived 0x9 entity's `## Design` → "Breakglass FO template" section + `### Relationship to entity 2x6` for the absorption decision. The breakglass template at `skills/first-officer/references/claude-first-officer-runtime.md:114-123` now opens with the `Skill(skill="spacedock:ensign")` first-action directive as 0x9's PR landed. This entity ships REJECTED-superseded with no code changes of its own — the work was completed under 0x9.
+
+---
+
+## Original problem statement (preserved for audit trail)
 
 ## Problem
 
