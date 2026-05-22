@@ -355,3 +355,18 @@ No silent fields. AC-1's set-difference check is empty at v1.0.
 ### Stage Reports body — explicit non-validation
 
 Per TBD-5 disposition, the schema body section recognizes `## Stage Report: <stage_name>` as a known heading but performs no structural validation on its contents. The ensign skill's `ensign-shared-core.md` `## Stage Report Protocol` section is the canonical contract. Future tightening, if needed, gets its own follow-up entity.
+
+## Stage Report: ideation
+
+- DONE: Recover the v0 draft onto main
+  Cherry-picked `410a0731` from `wip/fake-star-spike` as `148dfba5`; only commit touching `docs/superpowers/specs/2026-05-12-spacedock-frontmatter-contract-spec.md` on main per `git log --oneline -- docs/superpowers/specs/2026-05-12-spacedock-frontmatter-contract-spec.md`. Unrelated fake-star spike commits `b725de08` and `5a1529ca` deliberately not pulled.
+- DONE: Close every inline TBD from the v0 catalog
+  All 6 TBDs disposed in `## Design > TBD resolutions`: TBD-1/3/4/6 resolved with concrete positions; TBD-2 and TBD-5 deferred with one-line rationale matching the entity's `## Out of scope`. Worked positions folded into the design (e.g., TBD-1's `warn`-not-`fail` severity for conventional bullets is reflected in the mdschema shapes).
+- DONE: Populate ## Design with resolved positions, mdschema artifact shapes, and validation strategy
+  Sections added: TBD resolutions, mdschema artifact shapes (`workflow-readme` + `entity`), validation pass/fail fixtures, corpus field-coverage check, validation strategy, stage-report non-validation note. AC-5 tightened to reflect fail/warn severity split. Commit `3b95148a`.
+- DONE: Draft the mdschema YAML shapes AT IDEATION as design artifacts
+  Both shapes embedded in `## Design > mdschema artifact shapes`. Pass/fail validator-output fixtures included. Schema files at `schemas/*.mdschema.yml` land at implementation per AC-5; the ideation gate validates field coverage against the worked example.
+
+### Summary
+
+Recovered the v0 spec onto main and closed the design loop for ideation: 4 TBDs resolved (stage-bullet severity, parser-hardening split, schema authoring path, monotonic-additive back-compat), 2 deferred (stage-report body validation, reserved custom-field namespaces) with rationale matching the entity's stated out-of-scope list. The Design section now carries the two worked-example mdschema shapes, validator pass/fail fixtures, and a corpus coverage check that finds no silent fields. AC-5 tightened to clarify the ≥95% floor counts `fail`-severity violations only. Entity is ready for the ideation gate.
