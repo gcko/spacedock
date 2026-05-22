@@ -370,3 +370,35 @@ Per TBD-5 disposition, the schema body section recognizes `## Stage Report: <sta
 ### Summary
 
 Recovered the v0 spec onto main and closed the design loop for ideation: 4 TBDs resolved (stage-bullet severity, parser-hardening split, schema authoring path, monotonic-additive back-compat), 2 deferred (stage-report body validation, reserved custom-field namespaces) with rationale matching the entity's stated out-of-scope list. The Design section now carries the two worked-example mdschema shapes, validator pass/fail fixtures, and a corpus coverage check that finds no silent fields. AC-5 tightened to clarify the ≥95% floor counts `fail`-severity violations only. Entity is ready for the ideation gate.
+
+## Staff Review: ideation
+
+Independent staff review of the ideation deliverables. Findings only — gate decision is the FO's call.
+
+### Material findings
+
+1. **AC-5's ≥95% pass threshold is asserted, not measured.** AC body line 51 still reads "≥95% of active entities pass at `fail` severity". The ideation work ran a field-coverage check (AC-1 territory) but never ran an actual schema match against the corpus — the validator script doesn't exist yet. The 95% number is a guess. Either (a) drop the percentage and replace with "validator passes the corpus or every failure is enumerated with rationale", or (b) defer the threshold to implementation after a dry-run produces real numbers. Currently the AC is not testable inside the entity's own deliverables until implementation runs, which conflicts with the AC preamble at line 36 ("Each AC is testable inside this entity's own deliverables").
+
+2. **AC-6 implementation roundtrip lacks concrete pytest shape.** AC-6 (line 53) says "pytest case that creates a test entity via `status --set`, applies one mutation, and re-validates against the spec mdschema." Design line 352 separately states a `--validate` flag will be added to `status` at implementation. Neither location names: which fixture entity, which mutation, what the assertion looks like, or where the test file lives. `tests/test_status_validate.py` already exists at the repo root — Test Plan line 60 says "next to existing `tests/test_status.py` or equivalent" but `tests/test_status.py` does not exist (closest is `tests/test_status_script.py`). Fix the path reference and add one or two sentences specifying mutation kind (e.g. "set status to next stage" or "set worktree to a path") so the implementer doesn't re-design the test.
+
+3. **AC-4 version-stamp expectation vs current v0 spec.** AC-4 requires the spec to declare `v1.0` or `version: 1.0` at the top. The recovered v0 file still says "(v0 draft)" on line 1 and "**Status:** v0 draft" on line 3. The Stage Report does NOT claim this was changed (good — it wasn't), but the Proposed Approach step 6 says version bump happens after corpus validates and Python conforms. Confirm this AC is expected to land at implementation, not ideation, and that's fine — but the entity body should make the staging explicit. Right now a reader can't tell whether AC-4 is an ideation deliverable that slipped or an implementation deliverable by design.
+
+4. **`always_present` list is incomplete relative to v0 canonical-fields seed rule.** Schema lines 222-228 list `id, title, status, score, source, worktree` as `always_present`. v0 line 165 confirms the same set. But the schema field table at lines 248-256 only renders these six as always-present-typed — it omits an explicit assertion that other canonical-but-optional fields (`pr, started, completed, verdict, mod-block, archived, issue`) MUST be absent rather than empty-string when not set. The current Python writer doesn't seed them; the schema should pick a side. As written, an implementer could read this two ways.
+
+5. **`commissioned-by` pattern allows nonsense versions.** Schema line 137: `pattern: '^spacedock@([0-9]+\.[0-9]+\.[0-9]+|)$'`. The empty alternative `|` permits bare `spacedock@`, matching v0 line 82. But the regex also doesn't anchor against, e.g., `spacedock@0.0.0` or `spacedock@9999.99.99`. That's likely fine (range validation isn't the schema's job), but at minimum call out in the schema comment that bare `spacedock@` is intentional, otherwise the next reader will read it as a typo.
+
+### Polish findings
+
+1. **TBD-3 disposition is ambiguous in two places.** TBD-3 resolution at line 103 says "permit the Go read-path to use `gopkg.in/yaml.v3` provided it produces the same key set." That's a soft constraint, not a hard rule. v0 line 184 puts it slightly differently: "keep line-oriented for write-path… use full YAML on read-path." Reconcile language — they say similar things, but the disposition in the entity reads "permit" while v0 reads "likely answer: do X." A reader looking for the contract will hit both and wonder if anything was decided.
+
+2. **Corpus field coverage list at line 340 is asserted without a script invocation.** The list of 22 keys is plausible based on spot-checks but no command was run that produced it. A one-liner like `awk '/^---$/{c++; next} c==1 && /:/{print}' docs/plans/*.md docs/plans/_archive/*.md | cut -d: -f1 | sort -u` would back the claim; lacking that, the list is reviewer-trust-only. Spot-check confirmed `blocked-on, blocked-reason, depends` exist as claimed.
+
+3. **`tests/test_status.py or equivalent` is wrong path.** Test Plan line 60 references a file that doesn't exist. Use `tests/test_status_validate.py` (which does exist) or `tests/test_status_script.py`.
+
+4. **Worked-example fixtures use the entity's own frontmatter.** The PASS example at line 296-303 reproduces a subset of this entity's actual frontmatter. That's fine but worth flagging that the example will rot as the entity advances — at implementation, switch to a synthetic fixture.
+
+5. **Cherry-pick fidelity is clean.** `git diff 410a0731 148dfba5 -- <spec-path>` produces zero output; both commits author/date/message identical except SHA. No unrelated changes pulled in. Stage Report's evidence cite is accurate.
+
+6. **TBD-2 and TBD-5 deferrals do match `## Out of scope`** word-for-word (lines 66-67 cover them). Stage Report's claim there is true.
+
+7. **The schema's `worktree` field is `type: string` but semantically distinct between README (workflow-level, not applicable) and entity (path-or-empty).** README schema (workflow-readme) correctly omits `worktree` from `required`/`optional`. Entity schema includes it. No bug, but if a future reader runs the wrong schema against the wrong file the failure mode is silent. Worth a note in `applies_to.required_at`.
