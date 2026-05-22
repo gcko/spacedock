@@ -396,7 +396,7 @@ class TestRoutingUsagePayload:
             (mods_dir / name).write_text(body)
         _write_team_config_local(tmp_path, team, members)
         inp = {
-            "schema_version": 1,
+            "schema_version": 2,
             "entity_path": str(entity),
             "workflow_dir": str(wf),
             "stage": "ideation",
@@ -594,7 +594,7 @@ class TestBuildDeclaredTeammatesSection:
         _write_team_config_local(tmp_path, "test-team", [{"name": "team-lead"}])
 
         inp = {
-            "schema_version": 1,
+            "schema_version": 2,
             "entity_path": str(entity),
             "workflow_dir": str(wf),
             "stage": "ideation",
@@ -605,13 +605,14 @@ class TestBuildDeclaredTeammatesSection:
         result = _run_build_with_home(wf, inp, home=tmp_path)
         assert result.returncode == 0, f"stderr: {result.stderr}"
         out = json.loads(result.stdout)
-        prompt = out["prompt"]
+        with open(out["dispatch_file_path"], "r", encoding="utf-8") as fh:
+            body = fh.read()
 
         # Post fetch-on-demand restructure: the inlined standing-teammates section
         # is replaced by a `### Fetch commands` reference to `show-standing`. The
         # rendered body now lives in show-standing's stdout.
-        assert "show-standing" in prompt, (
-            "dispatch prompt must reference the show-standing fetch command"
+        assert "show-standing" in body, (
+            "dispatch body must reference the show-standing fetch command"
         )
         show_result = subprocess.run(
             [sys.executable, str(SCRIPT), "show-standing", "--workflow-dir", str(wf)],

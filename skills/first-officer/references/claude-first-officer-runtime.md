@@ -77,7 +77,7 @@ The only permitted path for initial `Agent()` dispatch is:
 1. **REQUIRED — Assemble the input JSON** from the entity, stage, and your judgment:
    ```json
    {
-     "schema_version": 1,
+     "schema_version": 2,
      "entity_path": "{absolute path to entity file}",
      "workflow_dir": "{absolute path to workflow directory}",
      "stage": "{target stage name}",

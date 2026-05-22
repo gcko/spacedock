@@ -127,7 +127,7 @@ class TestBuildWarnsOnBareWithoutTeamEvidence:
     def test_build_signals_on_bare_without_team_evidence(self, tmp_path):
         wf = _make_minimal_workflow(tmp_path)
         inp = {
-            "schema_version": 1,
+            "schema_version": 2,
             "entity_path": str(wf / "task.md"),
             "workflow_dir": str(wf),
             "stage": "backlog",

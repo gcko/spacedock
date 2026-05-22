@@ -80,6 +80,24 @@ Rules:
 
 When done, send a minimal completion signal that points the first officer back to the entity file, then stop. The entity file is the artifact; keep the message itself minimal.
 
+## DISPATCH_FILE Bootstrap
+
+The first officer dispatches an ensign with a tiny ~175-char `Agent(prompt=...)`
+arg of the shape:
+
+    Skill(skill="spacedock:ensign"); then Read /tmp/spacedock-dispatch/{name}.md and treat its content as your assignment.
+
+When your initial prompt matches this `DISPATCH_FILE:` pattern (the `Skill(...)`
+invocation followed by `Read /tmp/spacedock-dispatch/...`), your first action
+MUST be `Read /tmp/spacedock-dispatch/{name}.md` and then treat the file's
+content as if it had been your inline assignment. Then proceed with the rest
+of the operating contract (entity read, checklist, etc.).
+
+If the Read fails (file missing, unreadable, or empty), do NOT proceed with
+empty context. Send `SendMessage(to="team-lead", message="DISPATCH_FILE_MISSING:
+{path} - {error}")` and stop. The first officer surfaces the failure to the
+captain.
+
 ## Fetch-on-Demand Bootstrap
 
 The first officer's dispatch may contain a `### Fetch commands` section near the

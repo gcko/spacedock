@@ -648,6 +648,18 @@ def run_build(wf_dir: Path, stdin_data: dict, cwd: Path | None = None) -> subpro
     )
 
 
+def dispatch_body(out: dict) -> str:
+    """Return the materialized dispatch-file body the ensign Reads on first action.
+
+    Under schema_version: 2, the helper writes the full per-dispatch content to
+    out["dispatch_file_path"] and emits a tiny file-pointer in out["prompt"].
+    Substring assertions about the dispatch content should target the body.
+    """
+    path = out["dispatch_file_path"]
+    with open(path, "r", encoding="utf-8") as fh:
+        return fh.read()
+
+
 class TestBuildHelp:
     """AC-1: Subcommand exists."""
 
@@ -666,7 +678,7 @@ class TestBuildNormalDispatch:
     def test_build_normal_dispatch(self, tmp_path):
         wf_dir, entity = _make_workflow_fixture(tmp_path)
         inp = {
-            "schema_version": 1,
+            "schema_version": 2,
             "entity_path": str(entity),
             "workflow_dir": str(wf_dir),
             "stage": "ideation",
@@ -677,10 +689,10 @@ class TestBuildNormalDispatch:
         result = run_build(wf_dir, inp)
         assert result.returncode == 0, f"stderr: {result.stderr}"
         out = json.loads(result.stdout)
-        assert out["schema_version"] == 1
+        assert out["schema_version"] == 2
         assert out["subagent_type"] == "spacedock:ensign"
         assert "prompt" in out
-        assert "My test task" in out["prompt"]
+        assert "My test task" in dispatch_body(out)
         assert "ideation" in out["description"]
 
 
@@ -690,7 +702,7 @@ class TestBuildTeamMode:
     def test_build_team_mode_dispatch(self, tmp_path):
         wf_dir, entity = _make_workflow_fixture(tmp_path)
         inp = {
-            "schema_version": 1,
+            "schema_version": 2,
             "entity_path": str(entity),
             "workflow_dir": str(wf_dir),
             "stage": "ideation",
@@ -703,8 +715,9 @@ class TestBuildTeamMode:
         out = json.loads(result.stdout)
         assert out["name"] == "spacedock-ensign-my-task-ideation"
         assert out["team_name"] == "happy-team"
-        assert 'SendMessage(to="team-lead"' in out["prompt"]
-        assert "Completion Signal" in out["prompt"]
+        body = dispatch_body(out)
+        assert 'SendMessage(to="team-lead"' in body
+        assert "Completion Signal" in body
 
 
 class TestBuildBareMode:
@@ -713,7 +726,7 @@ class TestBuildBareMode:
     def test_build_bare_mode_dispatch(self, tmp_path):
         wf_dir, entity = _make_workflow_fixture(tmp_path)
         inp = {
-            "schema_version": 1,
+            "schema_version": 2,
             "entity_path": str(entity),
             "workflow_dir": str(wf_dir),
             "stage": "ideation",
@@ -725,18 +738,20 @@ class TestBuildBareMode:
         out = json.loads(result.stdout)
         assert "name" not in out
         assert "team_name" not in out
-        assert "SendMessage" not in out["prompt"]
-        assert "Completion Signal" not in out["prompt"]
+        body = dispatch_body(out)
+        assert "SendMessage" not in body
+        assert "Completion Signal" not in body
 
 
 class TestBuildSkillInvokeDirective:
     """#204 ACs: prepended Skill-invoke directive, AC3 duplicative-prose removals, AC5 stage-report heading."""
 
     def test_build_prepends_skill_invoke_directive(self, tmp_path):
-        """AC1: Skill(skill="spacedock:ensign") substring appears before "You are working on:"."""
+        """AC1: Skill(skill="spacedock:ensign") substring appears before "You are working on:"
+        in the dispatch body. The v2 prompt-arg itself also contains the Skill invocation."""
         wf_dir, entity = _make_workflow_fixture(tmp_path)
         inp = {
-            "schema_version": 1,
+            "schema_version": 2,
             "entity_path": str(entity),
             "workflow_dir": str(wf_dir),
             "stage": "ideation",
@@ -746,10 +761,12 @@ class TestBuildSkillInvokeDirective:
         }
         result = run_build(wf_dir, inp)
         assert result.returncode == 0, f"stderr: {result.stderr}"
-        prompt = json.loads(result.stdout)["prompt"]
-        skill_idx = prompt.find('Skill(skill="spacedock:ensign")')
-        header_idx = prompt.find("You are working on:")
-        assert skill_idx != -1, "directive missing from prompt"
+        out = json.loads(result.stdout)
+        assert 'Skill(skill="spacedock:ensign")' in out["prompt"]
+        body = dispatch_body(out)
+        skill_idx = body.find('Skill(skill="spacedock:ensign")')
+        header_idx = body.find("You are working on:")
+        assert skill_idx != -1, "directive missing from dispatch body"
         assert header_idx != -1
         assert skill_idx < header_idx, "Skill directive must precede the header"
 
@@ -757,7 +774,7 @@ class TestBuildSkillInvokeDirective:
         """AC1 (bare): directive still emitted in bare mode."""
         wf_dir, entity = _make_workflow_fixture(tmp_path)
         inp = {
-            "schema_version": 1,
+            "schema_version": 2,
             "entity_path": str(entity),
             "workflow_dir": str(wf_dir),
             "stage": "ideation",
@@ -766,15 +783,15 @@ class TestBuildSkillInvokeDirective:
         }
         result = run_build(wf_dir, inp)
         assert result.returncode == 0, f"stderr: {result.stderr}"
-        prompt = json.loads(result.stdout)["prompt"]
-        assert 'Skill(skill="spacedock:ensign")' in prompt
-        assert prompt.find('Skill(skill="spacedock:ensign")') < prompt.find("You are working on:")
+        body = dispatch_body(json.loads(result.stdout))
+        assert 'Skill(skill="spacedock:ensign")' in body
+        assert body.find('Skill(skill="spacedock:ensign")') < body.find("You are working on:")
 
     def test_build_omits_duplicative_shared_core_prose(self, tmp_path):
-        """AC3: four duplicative substrings absent from assembled prompt."""
+        """AC3: four duplicative substrings absent from assembled dispatch body."""
         wf_dir, entity = _make_workflow_fixture(tmp_path)
         inp = {
-            "schema_version": 1,
+            "schema_version": 2,
             "entity_path": str(entity),
             "workflow_dir": str(wf_dir),
             "stage": "ideation",
@@ -784,17 +801,17 @@ class TestBuildSkillInvokeDirective:
         }
         result = run_build(wf_dir, inp)
         assert result.returncode == 0, f"stderr: {result.stderr}"
-        prompt = json.loads(result.stdout)["prompt"]
-        assert "Do NOT modify YAML frontmatter in entity files." not in prompt
-        assert "Do NOT modify files under agents/ or references/" not in prompt
-        assert "Every checklist item must appear in your report. Do not omit items." not in prompt
-        assert "Mark each: DONE, SKIPPED (with rationale), or FAILED (with details)." not in prompt
+        body = dispatch_body(json.loads(result.stdout))
+        assert "Do NOT modify YAML frontmatter in entity files." not in body
+        assert "Do NOT modify files under agents/ or references/" not in body
+        assert "Every checklist item must appear in your report. Do not omit items." not in body
+        assert "Mark each: DONE, SKIPPED (with rationale), or FAILED (with details)." not in body
 
     def test_build_omits_stage_report_heading(self, tmp_path):
-        """AC5: "## Stage Report" heading absent from spawner prompt (shared-core owns it)."""
+        """AC5: "## Stage Report" heading absent from dispatch body (shared-core owns it)."""
         wf_dir, entity = _make_workflow_fixture(tmp_path)
         inp = {
-            "schema_version": 1,
+            "schema_version": 2,
             "entity_path": str(entity),
             "workflow_dir": str(wf_dir),
             "stage": "ideation",
@@ -804,14 +821,14 @@ class TestBuildSkillInvokeDirective:
         }
         result = run_build(wf_dir, inp)
         assert result.returncode == 0, f"stderr: {result.stderr}"
-        prompt = json.loads(result.stdout)["prompt"]
-        assert "## Stage Report" not in prompt
+        body = dispatch_body(json.loads(result.stdout))
+        assert "## Stage Report" not in body
 
     def test_build_directive_uses_plain_language_safety_phrasing(self, tmp_path):
         """AC6: directive contains plain-language "safe to call more than once" and does not use "idempotent"."""
         wf_dir, entity = _make_workflow_fixture(tmp_path)
         inp = {
-            "schema_version": 1,
+            "schema_version": 2,
             "entity_path": str(entity),
             "workflow_dir": str(wf_dir),
             "stage": "ideation",
@@ -821,9 +838,9 @@ class TestBuildSkillInvokeDirective:
         }
         result = run_build(wf_dir, inp)
         assert result.returncode == 0, f"stderr: {result.stderr}"
-        prompt = json.loads(result.stdout)["prompt"]
-        assert "safe to call more than once" in prompt
-        assert "idempotent" not in prompt
+        body = dispatch_body(json.loads(result.stdout))
+        assert "safe to call more than once" in body
+        assert "idempotent" not in body
 
 
 class TestBuildWorktreeStage:
@@ -833,7 +850,7 @@ class TestBuildWorktreeStage:
         wf_dir, _ = _make_workflow_fixture(tmp_path)
         entity = _make_worktree_entity(tmp_path, wf_dir)
         inp = {
-            "schema_version": 1,
+            "schema_version": 2,
             "entity_path": str(entity),
             "workflow_dir": str(wf_dir),
             "stage": "implementation",
@@ -844,16 +861,17 @@ class TestBuildWorktreeStage:
         result = run_build(wf_dir, inp, cwd=tmp_path)
         assert result.returncode == 0, f"stderr: {result.stderr}"
         out = json.loads(result.stdout)
-        assert "Your working directory is" in out["prompt"]
-        assert "Your git branch is" in out["prompt"]
-        assert "spacedock-ensign/wt-task" in out["prompt"]
-        assert "Do NOT switch branches" in out["prompt"]
+        body = dispatch_body(out)
+        assert "Your working directory is" in body
+        assert "Your git branch is" in body
+        assert "spacedock-ensign/wt-task" in body
+        assert "Do NOT switch branches" in body
         # AC-2: assert exact worktree-local entity path preserves workflow-dir subpath.
         # Fixture: git_root=tmp_path, workflow under tmp_path/workflow/, so subpath is "workflow/".
         expected_entity = str(
             tmp_path / ".worktrees" / "spacedock-ensign-wt-task" / "workflow" / "wt-task.md"
         )
-        assert f"Read the entity file at {expected_entity}" in out["prompt"]
+        assert f"Read the entity file at {expected_entity}" in body
 
 
 class TestBuildEntityPathTranslation:
@@ -899,7 +917,7 @@ class TestBuildEntityPathTranslation:
         )
         (wt_abs / "docs" / "plans" / "task.md").write_text(entity.read_text())
         inp = {
-            "schema_version": 1,
+            "schema_version": 2,
             "entity_path": str(entity),
             "workflow_dir": str(wf_dir),
             "stage": "implementation",
@@ -910,14 +928,15 @@ class TestBuildEntityPathTranslation:
         result = run_build(wf_dir, inp, cwd=tmp_path)
         assert result.returncode == 0, f"stderr: {result.stderr}"
         out = json.loads(result.stdout)
+        body = dispatch_body(out)
         expected_entity = str(wt_abs / "docs" / "plans" / "task.md")
-        assert f"Read the entity file at {expected_entity}" in out["prompt"]
+        assert f"Read the entity file at {expected_entity}" in body
 
     def test_build_entity_path_non_worktree(self, tmp_path):
         """AC-3: Non-worktree stage leaves entity path untranslated (main-branch path)."""
         wf_dir, entity = _make_workflow_fixture(tmp_path)
         inp = {
-            "schema_version": 1,
+            "schema_version": 2,
             "entity_path": str(entity),
             "workflow_dir": str(wf_dir),
             "stage": "ideation",
@@ -928,8 +947,9 @@ class TestBuildEntityPathTranslation:
         result = run_build(wf_dir, inp)
         assert result.returncode == 0, f"stderr: {result.stderr}"
         out = json.loads(result.stdout)
-        assert f"Read the entity file at {entity}" in out["prompt"]
-        assert ".worktrees" not in out["prompt"]
+        body = dispatch_body(out)
+        assert f"Read the entity file at {entity}" in body
+        assert ".worktrees" not in body
 
 
 class TestBuildEntityPathContract:
@@ -942,7 +962,7 @@ class TestBuildEntityPathContract:
             f"{tmp_path}/.worktrees/spacedock-ensign-my-task/workflow/my-task.md"
         )
         inp = {
-            "schema_version": 1,
+            "schema_version": 2,
             "entity_path": worktree_entity,
             "workflow_dir": str(wf_dir),
             "stage": "ideation",
@@ -960,7 +980,7 @@ class TestBuildEntityPathContract:
         wf_dir, _ = _make_workflow_fixture(tmp_path)
         entity = _make_worktree_entity(tmp_path, wf_dir)
         inp = {
-            "schema_version": 1,
+            "schema_version": 2,
             "entity_path": str(entity),
             "workflow_dir": str(wf_dir),
             "stage": "implementation",
@@ -971,8 +991,9 @@ class TestBuildEntityPathContract:
         result = run_build(wf_dir, inp, cwd=tmp_path)
         assert result.returncode == 0, f"stderr: {result.stderr}"
         out = json.loads(result.stdout)
+        body = dispatch_body(out)
         read_lines = [
-            line for line in out["prompt"].splitlines()
+            line for line in body.splitlines()
             if "Read the entity file at" in line
         ]
         assert len(read_lines) == 1, f"expected one Read-entity line; got {read_lines}"
@@ -994,7 +1015,7 @@ class TestBuildFeedbackDispatch:
     def test_build_feedback_dispatch(self, tmp_path):
         wf_dir, entity = _make_workflow_fixture(tmp_path)
         inp = {
-            "schema_version": 1,
+            "schema_version": 2,
             "entity_path": str(entity),
             "workflow_dir": str(wf_dir),
             "stage": "ideation",
@@ -1006,8 +1027,9 @@ class TestBuildFeedbackDispatch:
         result = run_build(wf_dir, inp)
         assert result.returncode == 0, f"stderr: {result.stderr}"
         out = json.loads(result.stdout)
-        assert "Feedback from prior review" in out["prompt"]
-        assert "bug X in line 42" in out["prompt"]
+        body = dispatch_body(out)
+        assert "Feedback from prior review" in body
+        assert "bug X in line 42" in body
 
 
 class TestBuildValidationRules:
@@ -1017,7 +1039,7 @@ class TestBuildValidationRules:
         """Rule 1: Missing required field."""
         wf_dir, entity = _make_workflow_fixture(tmp_path)
         inp = {
-            "schema_version": 1,
+            "schema_version": 2,
             "entity_path": str(entity),
             "workflow_dir": str(wf_dir),
             # "stage" is missing
@@ -1041,13 +1063,13 @@ class TestBuildValidationRules:
         }
         result = run_build(wf_dir, inp)
         assert result.returncode == 2
-        assert "unsupported input schema_version 99, expected 1" in result.stderr
+        assert "unsupported input schema_version 99, schema_version: 2 required" in result.stderr
 
     def test_build_validation_rule_3_stage_not_found(self, tmp_path):
         """Rule 3: Stage not in workflow."""
         wf_dir, entity = _make_workflow_fixture(tmp_path)
         inp = {
-            "schema_version": 1,
+            "schema_version": 2,
             "entity_path": str(entity),
             "workflow_dir": str(wf_dir),
             "stage": "nonexistent",
@@ -1063,7 +1085,7 @@ class TestBuildValidationRules:
         wf_dir, entity = _make_workflow_fixture(tmp_path)
         # entity has empty worktree field, but implementation requires worktree
         inp = {
-            "schema_version": 1,
+            "schema_version": 2,
             "entity_path": str(entity),
             "workflow_dir": str(wf_dir),
             "stage": "implementation",
@@ -1087,7 +1109,7 @@ class TestBuildValidationRules:
             "---\n"
         )
         inp = {
-            "schema_version": 1,
+            "schema_version": 2,
             "entity_path": str(entity),
             "workflow_dir": str(wf_dir),
             "stage": "implementation",
@@ -1103,7 +1125,7 @@ class TestBuildValidationRules:
         """Rule 5: Feedback reflow without feedback_context."""
         wf_dir, entity = _make_workflow_fixture(tmp_path)
         inp = {
-            "schema_version": 1,
+            "schema_version": 2,
             "entity_path": str(entity),
             "workflow_dir": str(wf_dir),
             "stage": "ideation",
@@ -1130,7 +1152,7 @@ class TestBuildValidationRules:
             "---\n"
         )
         inp = {
-            "schema_version": 1,
+            "schema_version": 2,
             "entity_path": str(entity),
             "workflow_dir": str(wf_dir),
             "stage": "ideation",
@@ -1157,7 +1179,7 @@ class TestBuildValidationRules:
             "---\n"
         )
         inp = {
-            "schema_version": 1,
+            "schema_version": 2,
             "entity_path": str(entity),
             "workflow_dir": str(wf_dir),
             "stage": "ideation",
@@ -1185,7 +1207,7 @@ class TestBuildValidationRules:
             "---\n"
         )
         inp = {
-            "schema_version": 1,
+            "schema_version": 2,
             "entity_path": str(entity),
             "workflow_dir": str(wf_dir),
             "stage": "ideation",
@@ -1200,7 +1222,7 @@ class TestBuildValidationRules:
         """Rule 8: Team mode without team_name."""
         wf_dir, entity = _make_workflow_fixture(tmp_path)
         inp = {
-            "schema_version": 1,
+            "schema_version": 2,
             "entity_path": str(entity),
             "workflow_dir": str(wf_dir),
             "stage": "ideation",
@@ -1216,7 +1238,7 @@ class TestBuildValidationRules:
         """Rule 9: Empty checklist."""
         wf_dir, entity = _make_workflow_fixture(tmp_path)
         inp = {
-            "schema_version": 1,
+            "schema_version": 2,
             "entity_path": str(entity),
             "workflow_dir": str(wf_dir),
             "stage": "ideation",
@@ -1231,7 +1253,7 @@ class TestBuildValidationRules:
         """Rule 10: Entity file does not exist."""
         wf_dir, _ = _make_workflow_fixture(tmp_path)
         inp = {
-            "schema_version": 1,
+            "schema_version": 2,
             "entity_path": str(tmp_path / "nonexistent.md"),
             "workflow_dir": str(wf_dir),
             "stage": "ideation",
@@ -1249,7 +1271,7 @@ class TestBuildValidationRules:
         entity = tmp_path / "dummy.md"
         entity.write_text("---\ntitle: Dummy\n---\n")
         inp = {
-            "schema_version": 1,
+            "schema_version": 2,
             "entity_path": str(entity),
             "workflow_dir": str(empty_dir),
             "stage": "ideation",
@@ -1262,12 +1284,12 @@ class TestBuildValidationRules:
 
 
 class TestBuildSchemaVersion:
-    """AC-8: Schema version check."""
+    """AC-8: Schema version check. CLEAN-BREAK: v1 input rejected, v2 required."""
 
-    def test_build_schema_version_rejection(self, tmp_path):
+    def test_build_schema_version_v1_rejection(self, tmp_path):
         wf_dir, entity = _make_workflow_fixture(tmp_path)
         inp = {
-            "schema_version": 2,
+            "schema_version": 1,
             "entity_path": str(entity),
             "workflow_dir": str(wf_dir),
             "stage": "ideation",
@@ -1276,7 +1298,116 @@ class TestBuildSchemaVersion:
         }
         result = run_build(wf_dir, inp)
         assert result.returncode == 2
-        assert "unsupported input schema_version 2, expected 1" in result.stderr
+        assert "schema_version: 2 required" in result.stderr
+
+
+class TestBuildDispatchFilePointer:
+    """AC-1 (rdt): v2 helper writes the full body to /tmp/spacedock-dispatch/{name}.md
+    and emits a tiny file-pointer prompt with the four required substrings."""
+
+    def test_prompt_is_short_file_pointer_with_required_substrings(self, tmp_path):
+        wf_dir, entity = _make_workflow_fixture(tmp_path)
+        inp = {
+            "schema_version": 2,
+            "entity_path": str(entity),
+            "workflow_dir": str(wf_dir),
+            "stage": "ideation",
+            "checklist": ["1. Item"],
+            "team_name": "t",
+            "bare_mode": False,
+        }
+        result = run_build(wf_dir, inp)
+        assert result.returncode == 0, result.stderr
+        out = json.loads(result.stdout)
+        prompt = out["prompt"]
+        # AC-1: <=200 chars, four required substrings.
+        assert len(prompt) <= 200, len(prompt)
+        assert 'Skill(skill="spacedock:ensign")' in prompt
+        assert "Read" in prompt
+        assert "/tmp/spacedock-dispatch/" in prompt
+        assert "treat its content as your assignment" in prompt
+
+    def test_dispatch_file_path_emitted_and_file_exists(self, tmp_path):
+        wf_dir, entity = _make_workflow_fixture(tmp_path)
+        inp = {
+            "schema_version": 2,
+            "entity_path": str(entity),
+            "workflow_dir": str(wf_dir),
+            "stage": "ideation",
+            "checklist": ["1. Item"],
+            "team_name": "t",
+            "bare_mode": False,
+        }
+        result = run_build(wf_dir, inp)
+        assert result.returncode == 0, result.stderr
+        out = json.loads(result.stdout)
+        path = out["dispatch_file_path"]
+        assert path.startswith("/tmp/spacedock-dispatch/")
+        assert path.endswith(".md")
+        assert out["name"] in path
+        assert os.path.isfile(path)
+        # The file pointer references the same path written.
+        assert path in out["prompt"]
+
+    def test_dispatch_file_contains_full_assembled_body(self, tmp_path):
+        wf_dir, entity = _make_workflow_fixture(tmp_path)
+        inp = {
+            "schema_version": 2,
+            "entity_path": str(entity),
+            "workflow_dir": str(wf_dir),
+            "stage": "ideation",
+            "checklist": ["1. Item"],
+            "team_name": "happy-team",
+            "bare_mode": False,
+        }
+        result = run_build(wf_dir, inp)
+        assert result.returncode == 0, result.stderr
+        out = json.loads(result.stdout)
+        body = dispatch_body(out)
+        # All the legacy v1-prompt structure now lives in the file body.
+        assert 'Skill(skill="spacedock:ensign")' in body
+        assert "You are working on:" in body
+        assert "### Completion checklist" in body
+        assert "### Fetch commands" in body
+        assert "### Completion Signal" in body
+        assert 'SendMessage(to="team-lead"' in body
+
+
+class TestBuildV2SavingsFloor:
+    """AC-5 (rdt): v2 emits a `prompt` field that is >=85% smaller than the
+    corresponding v1 assembly. The v1 baseline is reconstructed from the v2
+    dispatch file body — by design, the v2 body equals the v1 prompt content
+    (only the delivery shape changed). Captured as a percentage rather than an
+    absolute char floor because real v1 prompts vary 2,500-3,200 chars per
+    F1 of the ideation staff review."""
+
+    def test_v2_prompt_at_least_85pct_smaller_than_v1_equivalent(self, tmp_path):
+        wf_dir, entity = _make_workflow_fixture(tmp_path)
+        inp = {
+            "schema_version": 2,
+            "entity_path": str(entity),
+            "workflow_dir": str(wf_dir),
+            "stage": "ideation",
+            "checklist": [
+                "1. Do the first thing",
+                "2. Do the second thing",
+                "3. Do the third thing",
+            ],
+            "team_name": "happy-team",
+            "feedback_context": "Reviewer found bug X on line 42.",
+            "scope_notes": "Address feedback above; do not regress AC-2.",
+            "bare_mode": False,
+        }
+        result = run_build(wf_dir, inp)
+        assert result.returncode == 0, result.stderr
+        out = json.loads(result.stdout)
+        v1_equivalent_size = len(dispatch_body(out))  # what the v1 prompt was
+        v2_prompt_size = len(out["prompt"])
+        reduction = 1.0 - (v2_prompt_size / v1_equivalent_size)
+        assert reduction >= 0.85, (
+            f"v2 reduction {reduction:.2%} below 85% floor "
+            f"(v1={v1_equivalent_size}, v2={v2_prompt_size})"
+        )
 
 
 class TestStatusSiblingImport:
@@ -1474,7 +1605,7 @@ class TestBuildEmitsModel:
     def test_build_emits_model_from_stage(self, tmp_path):
         wf_dir, entity = _make_model_fixture(tmp_path, defaults_model="opus", stage_model="haiku")
         inp = {
-            "schema_version": 1,
+            "schema_version": 2,
             "entity_path": str(entity),
             "workflow_dir": str(wf_dir),
             "stage": "work",
@@ -1491,7 +1622,7 @@ class TestBuildEmitsModel:
     def test_build_precedence_stage_wins(self, tmp_path):
         wf_dir, entity = _make_model_fixture(tmp_path, defaults_model="opus", stage_model="sonnet")
         inp = {
-            "schema_version": 1,
+            "schema_version": 2,
             "entity_path": str(entity),
             "workflow_dir": str(wf_dir),
             "stage": "work",
@@ -1507,7 +1638,7 @@ class TestBuildEmitsModel:
     def test_build_precedence_defaults(self, tmp_path):
         wf_dir, entity = _make_model_fixture(tmp_path, defaults_model="haiku", stage_model=None)
         inp = {
-            "schema_version": 1,
+            "schema_version": 2,
             "entity_path": str(entity),
             "workflow_dir": str(wf_dir),
             "stage": "work",
@@ -1523,7 +1654,7 @@ class TestBuildEmitsModel:
     def test_build_precedence_null(self, tmp_path):
         wf_dir, entity = _make_model_fixture(tmp_path, defaults_model=None, stage_model=None)
         inp = {
-            "schema_version": 1,
+            "schema_version": 2,
             "entity_path": str(entity),
             "workflow_dir": str(wf_dir),
             "stage": "work",
@@ -1546,7 +1677,7 @@ class TestBuildEnumValidation:
             tmp_path, defaults_model=None, stage_model="claude-haiku-4-5-20251001"
         )
         inp = {
-            "schema_version": 1,
+            "schema_version": 2,
             "entity_path": str(entity),
             "workflow_dir": str(wf_dir),
             "stage": "work",
@@ -1565,7 +1696,7 @@ class TestBuildEnumValidation:
             tmp_path, defaults_model="bogus", stage_model=None
         )
         inp = {
-            "schema_version": 1,
+            "schema_version": 2,
             "entity_path": str(entity),
             "workflow_dir": str(wf_dir),
             "stage": "work",
@@ -1585,7 +1716,7 @@ class TestBuildVisibilityStderr:
     def test_build_stderr_notice_on_haiku_defaults(self, tmp_path):
         wf_dir, entity = _make_model_fixture(tmp_path, defaults_model="haiku", stage_model=None)
         inp = {
-            "schema_version": 1,
+            "schema_version": 2,
             "entity_path": str(entity),
             "workflow_dir": str(wf_dir),
             "stage": "work",
@@ -1601,7 +1732,7 @@ class TestBuildVisibilityStderr:
     def test_build_no_stderr_notice_when_null(self, tmp_path):
         wf_dir, entity = _make_model_fixture(tmp_path, defaults_model=None, stage_model=None)
         inp = {
-            "schema_version": 1,
+            "schema_version": 2,
             "entity_path": str(entity),
             "workflow_dir": str(wf_dir),
             "stage": "work",
@@ -1737,7 +1868,7 @@ class TestBuildStandingTeammateEnumeration:
             [{"name": "team-lead"}, {"name": "comm-officer"}],
         )
         inp = {
-            "schema_version": 1,
+            "schema_version": 2,
             "entity_path": str(entity),
             "workflow_dir": str(wf_dir),
             "stage": "ideation",
@@ -1748,9 +1879,10 @@ class TestBuildStandingTeammateEnumeration:
         result = _run_build_with_home(wf_dir, inp, home=tmp_path)
         assert result.returncode == 0, f"stderr: {result.stderr}"
         out = json.loads(result.stdout)
+        body = dispatch_body(out)
         # Post fetch-on-demand restructure: cmd_build emits a fetch-command
         # reference to show-standing rather than inlining the rendered block.
-        assert "show-standing" in out["prompt"], (
+        assert "show-standing" in body, (
             "cmd_build must emit a show-standing fetch command for team-mode dispatch "
             "with declared standing teammates"
         )
@@ -1764,9 +1896,9 @@ class TestBuildStandingTeammateEnumeration:
         assert self._SECTION_HEADING in rendered
         assert "comm-officer" in rendered
         assert "Standing prose-polishing teammate" in rendered
-        # The Completion Signal block stays at end-of-prompt; the fetch command
+        # The Completion Signal block stays at end-of-body; the fetch command
         # reference appears before it.
-        assert out["prompt"].index("show-standing") < out["prompt"].index("### Completion Signal")
+        assert body.index("show-standing") < body.index("### Completion Signal")
 
     def test_build_emits_standing_section_for_declared_but_not_alive(self, tmp_path):
         """Standing mod declared but member NOT alive in team config — section still appears.
@@ -1785,7 +1917,7 @@ class TestBuildStandingTeammateEnumeration:
             [{"name": "team-lead"}],
         )
         inp = {
-            "schema_version": 1,
+            "schema_version": 2,
             "entity_path": str(entity),
             "workflow_dir": str(wf_dir),
             "stage": "ideation",
@@ -1796,9 +1928,10 @@ class TestBuildStandingTeammateEnumeration:
         result = _run_build_with_home(wf_dir, inp, home=tmp_path)
         assert result.returncode == 0, f"stderr: {result.stderr}"
         out = json.loads(result.stdout)
+        body = dispatch_body(out)
         # Post fetch-on-demand restructure: the fetch-command reference appears
-        # in the prompt regardless of whether the teammate is alive in team config.
-        assert "show-standing" in out["prompt"]
+        # in the dispatch body regardless of whether the teammate is alive in team config.
+        assert "show-standing" in body
         show_result = subprocess.run(
             [sys.executable, str(SCRIPT), "show-standing", "--workflow-dir", str(wf_dir)],
             capture_output=True, text=True,
@@ -1815,7 +1948,7 @@ class TestBuildStandingTeammateEnumeration:
         mods_dir.mkdir()
         (mods_dir / "comm-officer.md").write_text(_STANDING_MOD_BODY)
         inp = {
-            "schema_version": 1,
+            "schema_version": 2,
             "entity_path": str(entity),
             "workflow_dir": str(wf_dir),
             "stage": "ideation",
@@ -1825,7 +1958,7 @@ class TestBuildStandingTeammateEnumeration:
         result = _run_build_with_home(wf_dir, inp, home=tmp_path)
         assert result.returncode == 0, f"stderr: {result.stderr}"
         out = json.loads(result.stdout)
-        assert self._SECTION_HEADING not in out["prompt"]
+        assert self._SECTION_HEADING not in dispatch_body(out)
 
     def test_build_omits_standing_section_when_no_standing_mods(self, tmp_path):
         """`_mods/` exists but contains only non-standing mods → no section."""
@@ -1839,7 +1972,7 @@ class TestBuildStandingTeammateEnumeration:
             [{"name": "team-lead"}, {"name": "pr-merge"}],
         )
         inp = {
-            "schema_version": 1,
+            "schema_version": 2,
             "entity_path": str(entity),
             "workflow_dir": str(wf_dir),
             "stage": "ideation",
@@ -2103,7 +2236,7 @@ class TestBuildStageHeadingParentheticalE2E:
             "Body.\n"
         )
         inp = {
-            "schema_version": 1,
+            "schema_version": 2,
             "entity_path": str(entity),
             "workflow_dir": str(wf_dir),
             "stage": "triaged",
@@ -2170,7 +2303,7 @@ class TestBuildStageHeadingParentheticalE2E:
             "Body.\n"
         )
         inp = {
-            "schema_version": 1,
+            "schema_version": 2,
             "entity_path": str(entity),
             "workflow_dir": str(wf_dir),
             "stage": "work",
@@ -2237,7 +2370,7 @@ class TestBuildUnderscoreStageError:
             "Body.\n"
         )
         inp = {
-            "schema_version": 1,
+            "schema_version": 2,
             "entity_path": str(entity),
             "workflow_dir": str(wf_dir),
             "stage": "in_progress",
@@ -2316,7 +2449,13 @@ def _run_build_input_template(
 
 
 class TestFetchSpecGolden:
-    """AC-1, AC-2, AC-9: golden-diff regression + size measurement on canonical fixture."""
+    """AC-1, AC-2, AC-9: golden-diff regression + size measurement on canonical fixture.
+
+    Under schema_version: 2 (dispatch-prompt-as-file-pointer), the full per-dispatch
+    body lives in /tmp/spacedock-dispatch/{name}.md and the stdout `prompt` is a
+    tiny ~175-char file-pointer. The golden body still equals dispatch_prompt_fetchspec.txt
+    because the assembly logic is unchanged; only the delivery shape moved.
+    """
 
     def test_fetchspec_canonical_byte_equal_to_golden(self, tmp_path):
         sandbox = _setup_fetchspec_sandbox(tmp_path)
@@ -2326,47 +2465,67 @@ class TestFetchSpecGolden:
             FIXTURES_DIR / "dispatch_inputs_canonical.json", wf, ent
         )
         assert result.returncode == 0, result.stderr
-        tok_stdout = _detok(
-            result.stdout, __WORKFLOW_DIR__=wf, __ENTITY_PATH__=ent, __GIT_ROOT__=sandbox
-        )
         parsed = json.loads(result.stdout)
-        tok_prompt = _detok(
-            parsed["prompt"],
+        body = dispatch_body(parsed)
+        tok_body = _detok(
+            body,
             __WORKFLOW_DIR__=wf,
             __ENTITY_PATH__=ent,
             __GIT_ROOT__=sandbox,
         )
-
-        golden_prompt = (FIXTURES_DIR / "dispatch_prompt_fetchspec.txt").read_text()
-        golden_stdout = (FIXTURES_DIR / "dispatch_stdout_fetchspec.json").read_text()
-        assert tok_prompt == golden_prompt, (
-            "fetchspec prompt drifted from golden file; re-run capture if intentional"
-        )
-        assert tok_stdout == golden_stdout, (
-            "fetchspec stdout drifted from golden file; re-run capture if intentional"
+        golden_body = (FIXTURES_DIR / "dispatch_prompt_fetchspec.txt").read_text()
+        assert tok_body == golden_body, (
+            "fetchspec dispatch body drifted from golden file; re-run capture if intentional"
         )
 
-    def test_fetchspec_canonical_under_size_ceiling(self):
-        """AC-1 numeric ceiling: prompt <= 3700 (the captain set 3500 against the spike's
-        non-worktree fixture; the canonical fixture per AC-1 is worktree-backed, which
-        inflates the per-dispatch worktree-instructions block ~280 chars equally on both
-        sides of the delta — see implementation Stage Report). AC-2 ceiling: stdout
-        <= 4300 for the same reason."""
-        golden_prompt = (FIXTURES_DIR / "dispatch_prompt_fetchspec.txt").read_text()
-        golden_stdout = (FIXTURES_DIR / "dispatch_stdout_fetchspec.json").read_text()
-        assert len(golden_prompt) <= 3700, len(golden_prompt)
-        assert len(golden_stdout) <= 4300, len(golden_stdout)
+    def test_fetchspec_v2_prompt_is_file_pointer(self, tmp_path):
+        """AC-1 (v2): emitted prompt is the ~175-char file-pointer with the four required substrings."""
+        sandbox = _setup_fetchspec_sandbox(tmp_path)
+        wf = sandbox / "workflow"
+        ent = wf / "001-sample-entity.md"
+        result = _run_build_input_template(
+            FIXTURES_DIR / "dispatch_inputs_canonical.json", wf, ent
+        )
+        assert result.returncode == 0, result.stderr
+        parsed = json.loads(result.stdout)
+        prompt = parsed["prompt"]
+        assert len(prompt) <= 200, len(prompt)
+        assert 'Skill(skill="spacedock:ensign")' in prompt
+        assert "Read" in prompt
+        assert "/tmp/spacedock-dispatch/" in prompt
+        assert "treat its content as your assignment" in prompt
+        assert parsed["dispatch_file_path"].startswith("/tmp/spacedock-dispatch/")
+        assert parsed["dispatch_file_path"].endswith(".md")
 
-    def test_fetchspec_session_scale_delta_meets_floor(self):
-        """AC-9 session-scale FO-side savings: baseline minus fetchspec sum >= 9000 chars/dispatch.
-        Captain's published floor was 9500 chars (spike measured 10,035 on a non-worktree
-        fixture). The canonical worktree-backed fixture's natural delta is 9339 chars;
-        the implementation Stage Report surfaces this calibration delta."""
+    def test_fetchspec_canonical_body_under_size_ceiling(self):
+        """AC-1 numeric ceiling: dispatch body <= 3700 chars on the canonical fixture."""
+        golden_body = (FIXTURES_DIR / "dispatch_prompt_fetchspec.txt").read_text()
+        assert len(golden_body) <= 3700, len(golden_body)
+
+    def test_fetchspec_session_scale_delta_meets_floor(self, tmp_path):
+        """AC-9 session-scale FO-side savings under v2: baseline FO-pass-through bytes vs
+        v2 FO-pass-through bytes. Under v2 the FO sees only the helper's stdout
+        (~250 chars: tiny prompt + dispatch_file_path + control fields) plus the
+        Agent() prompt arg (~175 chars). Savings vs the v1 baseline are
+        >>9000 chars per dispatch because the entire body left the FO's context."""
+        sandbox = _setup_fetchspec_sandbox(tmp_path)
+        wf = sandbox / "workflow"
+        ent = wf / "001-sample-entity.md"
+        result = _run_build_input_template(
+            FIXTURES_DIR / "dispatch_inputs_canonical.json", wf, ent
+        )
+        assert result.returncode == 0, result.stderr
+        v2_stdout_size = len(result.stdout)
+        parsed = json.loads(result.stdout)
+        v2_prompt_size = len(parsed["prompt"])
+        # FO-side pass-through under v2 = stdout (read once) + prompt arg (forwarded).
+        v2_fo_bytes = v2_stdout_size + v2_prompt_size
+        # Baseline (v1) FO-side pass-through = inlined prompt was both in stdout and
+        # in Agent(prompt=...); captured in the legacy goldens.
         bp = (FIXTURES_DIR / "dispatch_prompt_baseline.txt").read_text()
         bs = (FIXTURES_DIR / "dispatch_stdout_baseline.json").read_text()
-        fp = (FIXTURES_DIR / "dispatch_prompt_fetchspec.txt").read_text()
-        fs = (FIXTURES_DIR / "dispatch_stdout_fetchspec.json").read_text()
-        delta = (len(bp) + len(bs)) - (len(fp) + len(fs))
+        v1_fo_bytes = len(bp) + len(bs)
+        delta = v1_fo_bytes - v2_fo_bytes
         assert delta >= 9000, f"AC-9 delta regression: {delta} < 9000"
 
 
@@ -2385,8 +2544,9 @@ class TestFetchSpecCommandsShape:
         assert len(parsed["fetch_commands"]) == 2
         assert any("show-stage-def" in c for c in parsed["fetch_commands"])
         assert any("show-standing" in c for c in parsed["fetch_commands"])
-        assert "### Fetch commands" in parsed["prompt"]
-        block = parsed["prompt"].split("### Fetch commands", 1)[1]
+        body = dispatch_body(parsed)
+        assert "### Fetch commands" in body
+        block = body.split("### Fetch commands", 1)[1]
         for cmd in parsed["fetch_commands"]:
             assert f"    {cmd}" in block
 
@@ -2401,7 +2561,7 @@ class TestFetchSpecCommandsShape:
         parsed = json.loads(result.stdout)
         assert len(parsed["fetch_commands"]) == 1
         assert "show-stage-def" in parsed["fetch_commands"][0]
-        assert "show-standing" not in parsed["prompt"]
+        assert "show-standing" not in dispatch_body(parsed)
 
     def test_team_mode_zero_standing_emits_only_stage_def_fetch(self, tmp_path):
         sandbox = _setup_fetchspec_sandbox(tmp_path)
