@@ -346,3 +346,23 @@ Independent review by staff reviewer at 2026-05-22. Scope: ideation-gate sanity 
 ### Summary
 
 The translation contract is sound and the flag-ownership correction is independently verified. The two material concerns are (a) scope creep in the YAML config schema (four sections specified, one tested — finding 11) and (b) the contract has never touched a live safehouse binary (finding 3). Both are addressable without re-architecting. AC self-containment is mostly clean with one soft spot (AC-4 brew install).
+
+## Feedback Cycles
+
+### Cycle 1 — 2026-05-22 — ideation gate decision
+
+**Captain (CL) verdict: APPROVE with one material scope cut. Dispatch held until captain says "dispatch."**
+
+- **F11 resolution — drop the safehouse-config bridge entirely.** Safehouse already provides `--trust-workdir-config` which loads workdir-local safehouse config. Users get the same outcome without `spacedock` inventing its own config layer. **Impact at implementation time:**
+  - Remove AC-3 (safehouse-config bridge) from acceptance criteria; renumber remaining ACs
+  - Remove the `internal/safehouseconfig/` package from binary layout
+  - Remove the YAML config schema section from `## Design`
+  - The `--safehouse-config` flag and `SPACEDOCK_SAFEHOUSE_CONFIG` env var are NOT implemented
+  - Translation contract simplifies to: `safehouse -- claude --agent spacedock:first-officer [forwarded args...]` with no safehouse flag injection by the launcher. Users invoke safehouse flags through safehouse's own mechanisms (`--trust-workdir-config`, env vars, etc.)
+- **F12 (codex stub ship vs YAGNI) — undecided at this gate.** Resurface to captain at dispatch time.
+- **Other staff-review material findings — carry into implementation as feedback context:**
+  - F2 — soften the `--enable=KEY`-only wording in the entity body to acknowledge that both `=KEY` and ` KEY` forms are documented.
+  - F3 — captain-side smoke test of live safehouse before implementation locks the contract.
+  - F8 — AC-2's plugin-probe fixture should cover both installed-via-marketplace and marketplace-clone-only cases.
+  - F9 — strengthen AC-4 to require the release pipeline producing a `main.Version`-populated binary, not just `--version` non-empty.
+- **Polish items (5) — non-blocking; address opportunistically at implementation.**

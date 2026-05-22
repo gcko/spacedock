@@ -402,3 +402,17 @@ Independent staff review of the ideation deliverables. Findings only — gate de
 6. **TBD-2 and TBD-5 deferrals do match `## Out of scope`** word-for-word (lines 66-67 cover them). Stage Report's claim there is true.
 
 7. **The schema's `worktree` field is `type: string` but semantically distinct between README (workflow-level, not applicable) and entity (path-or-empty).** README schema (workflow-readme) correctly omits `worktree` from `required`/`optional`. Entity schema includes it. No bug, but if a future reader runs the wrong schema against the wrong file the failure mode is silent. Worth a note in `applies_to.required_at`.
+
+## Feedback Cycles
+
+### Cycle 1 — 2026-05-22 — ideation gate decision
+
+**Captain (CL) verdict: APPROVE with one AC modification. Dispatch held until captain says "dispatch."**
+
+- **F1 resolution — drop the ≥95% threshold from AC-5.** AC-5 becomes "validator passes the corpus OR every failure is enumerated with rationale." Implementation produces the `validate-corpus` script and runs it; the AC is satisfied by the validator running and reporting, not by hitting an arbitrary percentage. The percentage was unmeasurable at ideation (validator doesn't exist yet) and thus violated the AC self-containment rule.
+- **Other staff-review material findings — carry into implementation as feedback context:**
+  - F2 — AC-6's pytest needs a concrete fixture / mutation / assertion target. Fix the wrong file path: `tests/test_status.py` does not exist; correct file is `tests/test_status_validate.py`.
+  - F3 — make AC-4 staging explicit. The `v1.0` stamp is an implementation deliverable, not an ideation one; the entity body should say so to avoid reader confusion.
+  - F4 — pick a side for `always_present` semantics on canonical-but-optional fields (`pr`, `started`, `completed`, `verdict`, `mod-block`, `archived`, `issue`): must be absent vs. empty-string when not set.
+  - F5 — add a one-line schema comment to the `commissioned-by` regex explaining the bare-`spacedock@` empty alternative is intentional.
+- **Polish items (7) — non-blocking; address opportunistically at implementation.**
