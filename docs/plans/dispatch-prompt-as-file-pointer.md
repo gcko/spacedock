@@ -1,13 +1,13 @@
 ---
 id: rdtbc72j3wszp1skfjxvp3m5
 title: "Dispatch prompt as file-pointer: shrink FO per-dispatch context from ~14000 to ~380 chars"
-status: ideation
+status: implementation
 source: "Captain question in 2026-05-21 session about Agent-spawn-phase expansion. Research doc at docs/research/2026-05-21-agent-spawn-prompt-expansion.md walks the three spawn-phase expansion mechanisms (skills frontmatter, @-include in skill body, Skill args) and empirically confirms @-include does NOT resolve in Agent() prompt args. The proposed mechanism for FO context compression — `DISPATCH_FILE: {path}` convention with ensign-side Read on first action — composes with PR #231's existing fetch-on-demand pattern at one layer up. Predicted ~97% FO per-dispatch context reduction."
 started: 2026-05-22T18:08:01Z
 completed:
 verdict:
 score:
-worktree:
+worktree: .worktrees/spacedock-ensign-dispatch-prompt-as-file-pointer
 issue:
 pr:
 ---
