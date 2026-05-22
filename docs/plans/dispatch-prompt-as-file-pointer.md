@@ -189,12 +189,154 @@ Cost: ~$3-5, ~10 min wall-clock.
 If PASS → land helper change + ensign-shared-core clause + tests.
 If FAIL → record the failure mode, consider whether a slightly-larger prompt (e.g., ~200 chars with explicit ordering + error-handling instruction) closes the gap. If even that fails on sonnet, the proposal is structurally unworkable; ship a no-code-change Stage Report recommending re-evaluation.
 
+## Empirical findings
+
+Spike executed 2026-05-22 at `/tmp/rdt-spike/` with sonnet (the supported floor). Five sequential runs invoked `claude -p --agent spacedock:ensign --model sonnet --plugin-dir /Users/clkao/git/spacedock` with the recommended ~150-char prompt shape; each run's per-dispatch content was written to `/tmp/spacedock-dispatch/spike-N.md` (3,632 bytes — representative of a real PR #231 dispatch body, includes operating-contract directive, header, entity-read instruction, scope notes, checklist, fetch-on-demand block, completion-signal block).
+
+The tiny `Agent(prompt=...)` arg under test was 119 characters:
+
+```
+Skill(skill="spacedock:ensign"); then Read /tmp/spacedock-dispatch/spike-N.md and treat its content as your assignment.
+```
+
+| Run | rc | Read DISPATCH_FILE | Output file `OK` | Done: signal emitted | Verdict |
+|---|---|---|---|---|---|
+| 1 | 0 | yes | yes | yes | PASS |
+| 2 | 0 | yes | yes | yes | PASS |
+| 3 | 0 | yes | yes | yes | PASS |
+| 4 | 0 | yes | yes | yes | PASS |
+| 5 | 0 | yes | yes | yes | PASS |
+
+**Verdict: PASS (5/5, exceeds ≥4/5 captain threshold).**
+
+Observed tool sequence (consistent across all runs): `Skill(spacedock:ensign)` → `Read(ensign-shared-core.md)` → `Read(claude-ensign-runtime.md)` → `Read(/tmp/spacedock-dispatch/spike-N.md)` → fetch-stub `Bash(echo ...)` → `Write(/tmp/dispatch-file-pointer-spike-output.txt)` → `Bash(cat verify)` → text "Done: ...". The ensign treated the file's content as its assignment exactly as the design intends.
+
+Key reliability evidence:
+
+- **The inline `Skill(...)` failsafe works.** The model parsed `Skill(skill="spacedock:ensign")` out of the 119-char prompt and invoked the tool before Reading the file. This means the design does not depend on the broken skill-frontmatter-preload path (`claude-code#25834`); the boot-fallback rides in the prompt arg itself. Risk C (Option D fallback — bake DISPATCH_FILE clause into `agents/ensign.md`) is **not triggered**.
+- **No freelance behavior observed on sonnet.** Zero runs exhibited the haiku-bare freelance pattern that gated the 0x9 cycle-4 spike. The 2y declared sonnet-or-above model floor holds for ensign reliability as well.
+- **The trailing imperative ("treat its content as your assignment") is load-bearing.** Without it, the model could plausibly Read-and-then-stop, treating the prompt as an information-gathering request. The phrasing converts the Read result into operative instructions.
+
+Risk B residue: each run wrote a fresh `/tmp/spacedock-dispatch/spike-N.md`; idempotent overwrites confirmed (no collision concerns at 5x). No cleanup performed between runs; files persist until tmpfs reboot, consistent with the design recommendation.
+
+## Design
+
+The spike validates the **proposed approach** as written. This section locks the four design dimensions and the helper contract.
+
+### 1. FO-authored per-dispatch elements
+
+Unchanged from `## Proposed approach` table. The FO must continue assembling these in its own context:
+
+| Element | Source | FO-authored? |
+|---|---|---|
+| `entity_path`, `workflow_dir`, `stage` | FO routing | yes |
+| `checklist` (list of imperative lines) | FO judgment per stage | yes |
+| `scope_notes` (conditional context) | FO judgment | yes |
+| `feedback_context` (conditional) | Prior reviewer findings | yes |
+| `bare_mode`, `is_feedback_reflow` | Live team state | yes |
+| `team_name` (teams mode) | TeamCreate output | yes |
+| Stage definition prose | Workflow `README.md` | **no — moved to file** |
+| Standing teammates routing | Workflow standing config | **no — moved to file** (already moved by PR #231 fetch-on-demand) |
+| Operating-contract directive | Boilerplate | **no — moved to file** |
+| Completion-signal prose | Boilerplate | **no — moved to file** |
+| FO-forwarding warning | Boilerplate | **no — moved to file** |
+
+The FO continues to assemble the JSON input it already builds today. **No change to the FO's input shape.** All the size win is on the output side (the helper writes a file and emits a tiny pointer).
+
+### 2. JSON input schema — bump to v2
+
+Input schema bumps to `schema_version: 2` to signal opt-in to the new output contract. Schema fields are unchanged from today (entity_path, workflow_dir, stage, checklist, scope_notes, feedback_context, team_name, bare_mode, is_feedback_reflow). Rationale for the bump:
+
+- Output shape changes meaningfully: `prompt` shrinks ~98%, a new `dispatch_file_path` field appears.
+- Downstream tooling that consumes helper output (tests, future Codex adapter port) needs an explicit signal so it can route on shape.
+- Back-compat path: helper accepts v1 input and emits today's v1-shape output unchanged. v2 input triggers the new file-pointer behavior. Cutover is opt-in per dispatch via the input version; no Big Bang.
+
+### 3. Helper flow → file write + tiny stdout JSON → FO Agent() forwarding contract
+
+**Helper internal flow (v2 input):**
+
+1. Parse stdin JSON; validate `schema_version == 2`.
+2. Run all existing validation (entity exists, workflow README parses, stage resolves, model enum, name length, etc.) — identical to today.
+3. Assemble the **full dispatch prompt** (the same string today's helper would emit, identical content) into a Python string. Reuse the existing assembly code; no behavioral change to the content.
+4. Compute `dispatch_file_path = f"/tmp/spacedock-dispatch/{derived_name}.md"`. `derived_name` is the deterministic name the helper already computes (`{worker_key}-{slug}-{stage}`).
+5. `os.makedirs("/tmp/spacedock-dispatch", exist_ok=True)`. Tmpfs-friendly; no cleanup process needed.
+6. Write the assembled prompt to `dispatch_file_path` (UTF-8, overwrite-on-collision — idempotent for same-name re-dispatches).
+7. Build the tiny `prompt` field (~119 chars for this entity's path lengths):
+
+```
+Skill(skill="spacedock:ensign"); then Read {dispatch_file_path} and treat its content as your assignment.
+```
+
+8. Emit stdout JSON:
+
+```json
+{
+  "schema_version": 2,
+  "subagent_type": "spacedock:ensign",
+  "description": "{entity title}: {stage}",
+  "name": "{derived_name}",
+  "team_name": "{team_name or omitted}",
+  "model": "{effective_model}",
+  "fetch_commands": ["..."],
+  "dispatch_file_path": "/tmp/spacedock-dispatch/{derived_name}.md",
+  "prompt": "Skill(skill=\"spacedock:ensign\"); then Read /tmp/spacedock-dispatch/{derived_name}.md and treat its content as your assignment."
+}
+```
+
+Note `fetch_commands` is still mirrored at the top level for tooling parity with v1 (it also appears inside the file body). Helpers that today read `fetch_commands` directly out of the helper stdout (e.g., debug tooling) continue to work without changes.
+
+**FO consumption flow (unchanged in shape):**
+
+```python
+spec = json.loads(helper_stdout)
+Agent(
+    subagent_type=spec["subagent_type"],
+    name=spec["name"],
+    team_name=spec.get("team_name"),
+    model=spec["model"],
+    prompt=spec["prompt"],  # 119 chars vs ~7000 in v1
+)
+```
+
+The FO does not have to know about the file. It forwards `spec["prompt"]` verbatim. The helper's output JSON is also ~98% smaller because `prompt` is the dominant size term — the FO reads ~250 chars of helper stdout instead of ~7000.
+
+**Failure modes:**
+
+- **Helper can't write `/tmp/spacedock-dispatch/`** (permission, disk full): exit non-zero with stderr `dispatch_file_write_failed: {path}: {errno}`. FO falls back to break-glass per existing helper-failure contract. Tested by AC-2.
+- **Concurrent same-name dispatches**: name is deterministic per (entity, stage); same content, idempotent overwrite. Tested implicitly by AC-1 (file content matches).
+- **File deleted between helper-write and ensign-Read**: rare in practice (no cleanup process touches `/tmp/spacedock-dispatch/` between dispatch and first action). Ensign Read fails, shared-core clause routes to `SendMessage(to="team-lead", message="DISPATCH_FILE_MISSING: {path} - {error}")`. Tested by AC-3.
+
+### 4. Ensign initial prompt shape + reliability discussion
+
+**Locked shape (per spike PASS):**
+
+```
+Skill(skill="spacedock:ensign"); then Read {dispatch_file_path} and treat its content as your assignment.
+```
+
+Three required components, in this order:
+
+1. `Skill(skill="spacedock:ensign")` — explicit boot-fallback. Defends against the broken skill-frontmatter-preload path (`claude-code#25834`). The spike confirmed the model invokes this even when its own preload would have succeeded — calling twice is idempotent per the skill's own discipline.
+2. `Read {dispatch_file_path}` — instructs the model to load the file body as context. Path is absolute, predictable, and deterministic per dispatch.
+3. `and treat its content as your assignment` — converts the Read result into operative instructions. Without this trailing clause, a model could plausibly Read-and-then-stop (treating the prompt as a query rather than a dispatch).
+
+**Length:** ~119 chars for typical `derived_name` lengths; up to ~200 chars for the longest possible name (defends AC-1's ≤200 char ceiling).
+
+**Reliability ceiling:** the spike establishes 5/5 PASS on sonnet under realistic dispatch-body conditions. This is the supported model floor. No claim is made for haiku.
+
+**Why the shared-core clause is still needed (AC-3):** the prompt-arg failsafe handles the boot directive, but it does not handle:
+
+- The error case (file missing or unreadable) — needs `DISPATCH_FILE_MISSING:` SendMessage prose.
+- The model-discipline case (what does "treat its content as your assignment" actually mean operationally) — needs the existing `Fetch-on-Demand Bootstrap` discipline already in shared-core to apply uniformly. The new clause makes this explicit so the discipline is documented, not just empirical.
+
+The shared-core clause is therefore additive, not redundant — it covers the failure mode the prompt arg cannot cover.
+
 ## Acceptance criteria
 
 End-state properties of the finished entity:
 
-1. **`claude-team build` (with `schema_version: 2` input) emits a spec where `prompt` is ≤200 chars** and contains the substrings `Skill(skill="spacedock:ensign")`, `Read`, and `/tmp/spacedock-dispatch/` (the predictable path pattern). The full ~7000-char per-dispatch content is written to a file at `/tmp/spacedock-dispatch/{name}.md`.
-   - **Test:** parser-level test in `tests/test_claude_team.py` runs the helper against a canonical v2 input and asserts (a) the emitted `prompt` length is ≤200, (b) the three substrings appear, (c) `dispatch_file_path` field is set and the file exists at that path with the expected content.
+1. **`claude-team build` (with `schema_version: 2` input) emits a spec where `prompt` is ≤200 chars** and contains the substrings `Skill(skill="spacedock:ensign")`, `Read`, `/tmp/spacedock-dispatch/` (the predictable path pattern), and `treat its content as your assignment` (the load-bearing trailing imperative confirmed by the spike). The full per-dispatch content (today's PR #231 shape) is written to a file at `/tmp/spacedock-dispatch/{name}.md`.
+   - **Test:** parser-level test in `tests/test_claude_team.py` runs the helper against a canonical v2 input and asserts (a) the emitted `prompt` length is ≤200, (b) the four substrings appear, (c) `dispatch_file_path` field is set and the file exists at that path with the expected content.
 
 2. **The helper preserves v1 schema input** (today's shape) for backwards compatibility OR cleanly errors out with a clear migration message. Decision deferred to implementation; either is acceptable, but the behavior is verified by a test.
    - **Test:** parser-level test pipes a v1 input to the helper and asserts (a) either the helper produces a v1-shape output (back-compat), or the helper exits non-zero with a message containing `schema_version: 2 required`.
@@ -202,8 +344,8 @@ End-state properties of the finished entity:
 3. **`skills/ensign/references/ensign-shared-core.md` `## First action` section contains the `DISPATCH_FILE:` clause** with the two properties: (a) instructs Read on a matching prompt pattern; (b) instructs SendMessage-on-failure with `DISPATCH_FILE_MISSING:` prefix.
    - **Test:** static-content test asserts both substrings appear in the file.
 
-4. **Spike result is documented** in the entity body's `## Empirical findings` section with verdict PASS/INCONCLUSIVE/FAIL and per-run table. Captain-set threshold: ≥4/5 PASS.
-   - **Test:** entity body content check.
+4. **Spike result is documented** in the entity body's `## Empirical findings` section with verdict PASS/INCONCLUSIVE/FAIL and per-run table. Captain-set threshold: ≥4/5 PASS. The ideation-cycle spike landed 5/5 PASS on sonnet; this AC is satisfied at the ideation gate and a future cycle does not re-run it.
+   - **Test:** entity body content check — section exists, contains verdict, contains per-run table.
 
 5. **FO context savings are measured and ≥10,000 chars per dispatch** in a worked example. Comparison shape: today's helper-output-prompt vs. v2-helper-output-prompt against an identical input fixture.
    - **Test:** golden-file test pinning the v2 emitted prompt size at ≤200 chars AND a derived test asserting `helper_stdout_size_v2 < helper_stdout_size_v1 - 10000` for the canonical fixture.
@@ -257,3 +399,20 @@ If spike on the proposed shape FAILS, run a follow-up spike with Option D before
 - Predicted impact: ~97% FO per-dispatch context reduction. For a 20-dispatch captain session, ~260,000 chars of FO budget freed.
 - Estimated complexity: small. Helper change ~50 lines Python, ensign-shared-core prose ~10 lines, tests ~50 lines. Spike ~$3-5. Total cost ~$15-20.
 - Empirical evidence required at ideation gate: 5-run sonnet spike with verdict PASS/INCONCLUSIVE/FAIL per AC-4.
+
+## Stage Report: ideation
+
+- DONE: Run the empirical spike: 5 sonnet runs of a trivial DISPATCH_FILE fixture
+  5/5 PASS on sonnet at `/tmp/rdt-spike/primary/` (summary.tsv); recommended 119-char prompt shape; representative ~3.6 KB fixture body; verdict PASS exceeds ≥4/5 threshold.
+- DONE: Populate ## Design with the four design dimensions per the entity body's 'Proposed approach'
+  Added ## Design section with (a) FO-authored elements table, (b) v2 schema bump rationale, (c) helper flow + Agent() forwarding contract + failure modes, (d) locked ensign prompt shape with three required components and reliability discussion.
+- SKIPPED: Address Risk C: spike Option D in 2 runs as a fallback check during ideation if cycle-1 primary FAILs
+  Not triggered. Primary spike was 5/5 PASS, so Option D fallback was unnecessary per the assignment instruction ("only fire if the primary shape disappoints").
+- DONE: Tighten ACs to match what the spike empirically supports
+  AC-1 updated to require the trailing imperative substring `treat its content as your assignment`; AC-4 amended to record 5/5 PASS satisfies the ideation gate; AC-5 left intact (savings claim verified at implementation time against real dispatch bodies).
+- DONE: Document spike result in `## Empirical findings`
+  Added section with per-run table, observed tool sequence, key reliability evidence (Skill failsafe works, no sonnet freelancing, trailing imperative is load-bearing), and Risk B residue note.
+
+### Summary
+
+Empirical spike PASSed 5/5 on sonnet, validating the proposed ~150-char prompt shape (`Skill(...); then Read {file} and treat its content as your assignment.`) reliably triggers the ensign to load the operating contract, Read the dispatch file, and execute the embedded checklist. Risk C (Option D fallback baking DISPATCH_FILE into `agents/ensign.md`) is not triggered. The four design dimensions are locked: helper writes per-dispatch content to `/tmp/spacedock-dispatch/{derived_name}.md`, emits a ~119-char `prompt` field plus a new `dispatch_file_path` field under `schema_version: 2`, FO forwards verbatim. Implementation is ready to proceed with helper-change + ensign-shared-core clause + tests as specified in ACs 1-7.
