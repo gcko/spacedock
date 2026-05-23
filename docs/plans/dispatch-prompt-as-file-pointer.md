@@ -10,7 +10,7 @@ score:
 worktree: .worktrees/spacedock-ensign-dispatch-prompt-as-file-pointer
 issue:
 pr: #234
-mod-block: merge:pr-merge
+mod-block: 
 ---
 
 ## Problem
