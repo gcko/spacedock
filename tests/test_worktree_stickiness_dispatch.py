@@ -107,7 +107,7 @@ def test_build_routes_to_worktree_on_stickiness(tmp_path):
     git_root, workflow_dir, entity_path = _materialize_git_root_with_worktree(tmp_path)
 
     inp = {
-        "schema_version": 1,
+        "schema_version": 2,
         "entity_path": str(entity_path),
         "workflow_dir": str(workflow_dir),
         "stage": "validation",  # declared worktree: false (inherits default)
@@ -131,12 +131,14 @@ def test_build_routes_to_worktree_on_stickiness(tmp_path):
         f"stderr={result.stderr!r}, stdout={result.stdout[:400]!r}"
     )
 
-    # cmd_build emits a JSON object with the assembled prompt.
+    # cmd_build emits a JSON object with a tiny file-pointer prompt and a
+    # dispatch_file_path field pointing to the full assembled dispatch body.
     out = json.loads(result.stdout)
-    prompt = out.get("prompt", "")
+    with open(out["dispatch_file_path"], "r", encoding="utf-8") as fh:
+        body = fh.read()
     expected_worktree_path = str(git_root / ".worktrees" / "spacedock-ensign-task-a")
-    assert expected_worktree_path in prompt, (
-        f"AC-4: validation-stage prompt must name the entity's stamped worktree "
+    assert expected_worktree_path in body, (
+        f"AC-4: validation-stage dispatch body must name the entity's stamped worktree "
         f"({expected_worktree_path!r}) under stickiness, even though the stage "
-        f"declares worktree: false. Prompt was:\n{prompt}"
+        f"declares worktree: false. Body was:\n{body}"
     )

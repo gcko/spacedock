@@ -33,13 +33,14 @@ load_active_entity_fields = _status.load_active_entity_fields
 find_git_root = _status.find_git_root
 
 
-SCHEMA_VERSION = 1
+SCHEMA_VERSION = 2
 BUILD_REQUIRED_FIELDS = ('schema_version', 'entity_path', 'workflow_dir', 'stage', 'checklist')
 NAME_PATTERN = re.compile(r'^[a-z0-9][a-z0-9-]*[a-z0-9]$')
 NAME_MAX_LEN = 200
 MODEL_ENUM = ('sonnet', 'opus', 'haiku')
 MODEL_ENUM_LIST = 'must be one of: sonnet, opus, haiku'
 TEAM_EVIDENCE_WINDOW_SECS = 30 * 60
+DISPATCH_FILE_DIR = '/tmp/spacedock-dispatch'
 
 
 def _recent_team_evidence():
@@ -179,10 +180,13 @@ def cmd_build(args):
         if field not in inp or inp[field] is None:
             return _build_error(f"missing required field '{field}'")
 
-    # Rule 2: Schema version supported
+    # Rule 2: Schema version supported (CLEAN-BREAK: v1 rejected)
     sv = inp['schema_version']
     if sv != SCHEMA_VERSION:
-        return _build_error(f'unsupported input schema_version {sv}, expected {SCHEMA_VERSION}', code=2)
+        return _build_error(
+            f'unsupported input schema_version {sv}, schema_version: {SCHEMA_VERSION} required',
+            code=2,
+        )
 
     entity_path = inp['entity_path']
     stage = inp['stage']
@@ -445,7 +449,28 @@ def cmd_build(args):
             'syntax is the literal call the ensign must emit, not a description of one.'
         )
 
-    prompt = '\n'.join(prompt_parts)
+    dispatch_body = '\n'.join(prompt_parts)
+
+    # v2 file-pointer: write the full dispatch body to a stable path and emit
+    # a tiny prompt that the ensign Reads on first action. The path is
+    # deterministic per (entity, stage); same-name re-dispatches overwrite
+    # idempotently. See docs/plans/dispatch-prompt-as-file-pointer.md.
+    dispatch_file_path = os.path.join(DISPATCH_FILE_DIR, f'{derived_name}.md')
+    try:
+        os.makedirs(DISPATCH_FILE_DIR, exist_ok=True)
+        with open(dispatch_file_path, 'w', encoding='utf-8') as fh:
+            fh.write(dispatch_body)
+    except OSError as e:
+        print(
+            f'dispatch_file_write_failed: {dispatch_file_path}: {e}',
+            file=sys.stderr,
+        )
+        return 1
+
+    prompt = (
+        f'Skill(skill="spacedock:ensign"); then Read {dispatch_file_path} '
+        f'and treat its content as your assignment.'
+    )
 
     # Build output
     output = {
@@ -453,6 +478,7 @@ def cmd_build(args):
         'subagent_type': subagent_type,
         'description': f'{entity_title}: {stage}',
         'fetch_commands': list(fetch_commands),
+        'dispatch_file_path': dispatch_file_path,
         'prompt': prompt,
         'model': effective_model,
     }

@@ -3,6 +3,7 @@
 
 from __future__ import annotations
 
+import re
 import sys
 from pathlib import Path
 
@@ -145,6 +146,16 @@ def test_standing_teammate_spawns_and_roundtrips(test_project, model, effort):
             label="ensign Agent() dispatched",
         )
         ensign_prompt = _agent_input(ensign_dispatch).get("prompt", "")
+        # Under schema_version: 2 the FO emits a tiny file-pointer prompt; the
+        # actual dispatch body lives at /tmp/spacedock-dispatch/{name}.md. When
+        # we see the v2 shape, Read the body and assert against it instead.
+        # The break-glass fallback emits a fully-inlined prompt, in which case
+        # ensign_prompt stays unchanged.
+        m = re.search(r"Read (/tmp/spacedock-dispatch/[^\s]+\.md)", ensign_prompt)
+        if m:
+            dispatch_file = Path(m.group(1))
+            if dispatch_file.is_file():
+                ensign_prompt = dispatch_file.read_text()
         # Post fetch-on-demand restructure: the helper-path dispatch references the
         # standing-teammates body via `claude-team show-standing` rather than inlining
         # it. The break-glass fallback path inlines neither (no standing-teammates

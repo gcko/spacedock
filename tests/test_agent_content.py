@@ -608,7 +608,18 @@ def test_assembled_codex_ensign_has_completion_summary_contract():
 
     assert "completion summary" in text.lower()
     assert "logical worker id" in text.lower()
-    assert "SendMessage" not in text
+    # Codex completion contract: the codex runtime adapter must not use SendMessage.
+    # The shared DISPATCH_FILE bootstrap clause references SendMessage as the
+    # claude-runtime failure channel; exempt that single reference by checking
+    # for SendMessage outside the DISPATCH_FILE Bootstrap section.
+    non_dispatch_file = re.sub(
+        r"## DISPATCH_FILE Bootstrap.*?(?=^## )",
+        "",
+        text,
+        count=1,
+        flags=re.DOTALL | re.MULTILINE,
+    )
+    assert "SendMessage" not in non_dispatch_file
 
 
 def test_assembled_claude_first_officer_has_context_budget_in_reuse_conditions():
@@ -666,7 +677,7 @@ def test_assembled_claude_first_officer_has_structured_dispatch():
     )
 
     # The dispatch section has the input JSON shape
-    assert '"schema_version": 1' in dispatch_section
+    assert '"schema_version": 2' in dispatch_section
     assert '"entity_path"' in dispatch_section
     assert '"checklist"' in dispatch_section
 
@@ -800,6 +811,27 @@ def test_ensign_shared_core_carries_fetch_on_demand_bootstrap_section():
     # Report-to-FO contract is named without naming a specific transport tool.
     assert "report the failure to the first officer" in text
     assert "non-zero" in text
+
+
+def test_ensign_shared_core_carries_dispatch_file_bootstrap_clause():
+    """AC-3 (rdt): ensign-shared-core's ## DISPATCH_FILE Bootstrap section names the
+    file-pointer prompt pattern, the Read action, and the SendMessage-on-failure
+    contract with the DISPATCH_FILE_MISSING: prefix."""
+    text = read_text("skills/ensign/references/ensign-shared-core.md")
+    assert "## DISPATCH_FILE Bootstrap" in text, (
+        "shared-core must carry a top-level ## DISPATCH_FILE Bootstrap section"
+    )
+    # Property (a): instructs Read on a matching prompt pattern.
+    assert "Read /tmp/spacedock-dispatch/" in text, (
+        "DISPATCH_FILE clause must instruct Read on /tmp/spacedock-dispatch/{name}.md"
+    )
+    # Property (b): instructs SendMessage with DISPATCH_FILE_MISSING: prefix on failure.
+    assert "DISPATCH_FILE_MISSING:" in text, (
+        "DISPATCH_FILE clause must name the DISPATCH_FILE_MISSING: failure prefix"
+    )
+    assert 'SendMessage(to="team-lead"' in text, (
+        "DISPATCH_FILE clause must route failure via SendMessage to team-lead"
+    )
 
 
 if __name__ == "__main__":
