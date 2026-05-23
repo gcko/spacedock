@@ -86,6 +86,16 @@ def test_fetch_on_demand_dispatch_runs_fetch_commands_and_writes_stage_report(
     log = LogParser(t.log_dir / "fo-log.jsonl")
     log.write_agent_prompt(t.log_dir / "agent-prompt.txt")
     agent_prompt = log.agent_prompt()
+    # Under schema_version: 2 the FO emits a tiny file-pointer prompt; the
+    # actual dispatch body lives at /tmp/spacedock-dispatch/{name}.md. When
+    # we see the v2 shape, Read the body and assert against it instead.
+    # The break-glass fallback emits a fully-inlined prompt, in which case
+    # agent_prompt stays unchanged.
+    m = re.search(r"Read (/tmp/spacedock-dispatch/[^\s]+\.md)", agent_prompt)
+    if m:
+        dispatch_file = Path(m.group(1))
+        if dispatch_file.is_file():
+            agent_prompt = dispatch_file.read_text()
 
     # Structural: the dispatch carries the fetch-on-demand shape.
     assert "### Fetch commands" in agent_prompt, (

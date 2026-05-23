@@ -526,3 +526,20 @@ All seven ACs hold against the committed implementation (commits 7c9467b0 + bfce
 ### Summary
 
 CYCLE-2 implementation remediation initiated by CI feedback on PR #234. Migrated the single missed test file (`tests/test_checklist_e2e.py`) to the v2 file-pointer shape using the same regex/Read pattern as `dispatch_body(out)` in `tests/test_claude_team.py:651-661`, but operating on a string (`agent_prompt` from `LogParser.agent_prompt()`) rather than a parser output dict. Production code untouched; helper architecture unchanged. Static suite stays at 635 passed; CI on PR #234 will re-verify the live-claude bare and team paths.
+
+## Stage Report: implementation (cycle 3)
+
+- DONE: Migrate `tests/test_fetch_on_demand_dispatch.py` to handle the v2 file-pointer shape
+  Inserted the cycle-2 detection block immediately after `agent_prompt = log.agent_prompt()` (around line 88): `re.search(r"Read (/tmp/spacedock-dispatch/[^\s]+\.md)", agent_prompt)`; when matched and the file is readable, reassign `agent_prompt` to the file body so the `### Fetch commands` and `claude-team show-stage-def` substring assertions land on the materialized dispatch body. Break-glass fallback falls through unchanged.
+- DONE: Migrate `tests/test_standing_teammate_spawn.py` to handle the v2 file-pointer shape
+  Added `import re` and inserted the same detection block immediately after `ensign_prompt = _agent_input(ensign_dispatch).get("prompt", "")` (around line 147); when matched and the file is readable, reassign `ensign_prompt` to the file body so the `claude-team show-standing` / `### Standing teammates available in your team` substring assertions land on the materialized dispatch body. `Path` was already imported.
+- DONE: Audit `tests/` for remaining `agent_prompt`/`ensign_prompt` consumers
+  `grep -lE 'log\.agent_prompt\(\)|LogParser.*agent_prompt|ensign_prompt ='` against `tests/` returns exactly three files: `test_checklist_e2e.py` (migrated cycle-2), `test_fetch_on_demand_dispatch.py` + `test_standing_teammate_spawn.py` (migrated this cycle). No fourth file surfaced.
+- DONE: `make test-static` regression check
+  635 passed, 27 deselected, 15 subtests passed in 28.95s — byte-exact match to cycle-2 baseline. No new failures.
+- SKIPPED: Re-run `make test-live-claude` locally
+  Per assignment instruction; CI on PR #234 re-runs the live suite after push.
+
+### Summary
+
+CYCLE-3 fix-forward: migrated the two remaining live tests that prior CI on PR #234 flagged as still asserting against the v1-shaped `agent_prompt`/`ensign_prompt`. Pattern is byte-similar to cycle-2's `test_checklist_e2e.py` migration (the 10-line `re.search(r"Read (/tmp/spacedock-dispatch/[^\s]+\.md)", ...)` block). No production code changes; helper architecture unchanged. The three migrated tests now share the same inline detection pattern; a future refactor can DRY this into a `dispatch_body_from_prompt(s)` helper if appropriate. Static suite stays at 635 passed; CI on PR #234 will re-verify the live-claude bare and team paths once the captain approves the next run.
